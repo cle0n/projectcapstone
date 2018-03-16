@@ -1,6 +1,6 @@
 ;----------------------------------------
 ;
-;	while loop construct #1 (64-bit)
+;	while loop construct #0 (64-bit)
 ;	with RIP relative addressing
 ;
 ;	build:
