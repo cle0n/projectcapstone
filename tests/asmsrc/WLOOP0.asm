@@ -37,19 +37,19 @@ msg:	db	'Hello World!', 0
 		SECTION	.text
 _start:
 		push	rbp
-		mov		rbp, rsp
-		sub		rsp, 8
-		mov		qword [rbp - 8], 4
-		jmp		L0
+		mov	rbp, rsp
+		sub	rsp, 8
+		mov	qword [rbp - 8], 4
+		jmp	L0
 L1:
-		lea		rdi, [rel + msg]
+		lea	rdi, [rel + msg]
 		ccall	puts
 L0:
-		mov		rax, qword [rbp - 8]
-		lea		rdx, [rax - 1]
-		mov		qword [rbp - 8], rdx
+		mov	rax, qword [rbp - 8]
+		lea	rdx, [rax - 1]
+		mov	qword [rbp - 8], rdx
 		test	rax, rax
-		jg		L1
+		jg	L1
 LX:
 		ccall	exit
 
