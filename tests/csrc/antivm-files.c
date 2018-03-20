@@ -12,7 +12,9 @@
 
 #define SIZEOFARR(x) \
 	sizeof(x) / sizeof(x[0])
-	
+
+// 32-bit processes can use Sysnative to access the native system directory.
+// so access to C:\Windows\System32\ doesn't get redirected to C:\Windows\SySWOW64\
 WCHAR	*szaFiles[] = {
 	L"%windir%\\Sysnative\\Drivers\\vmmouse.sys",
 	L"%windir%\\System32\\vm3dgl.dll",
