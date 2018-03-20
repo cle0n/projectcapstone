@@ -44,9 +44,11 @@ BOOL FindVMAdapter()
 	DWORD cbSize;
 	DWORD dwCount = 0;
 	
+	// Need GetAdaptersAddresses to fail first so it can populate cbSize with the size it requires.
 	if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &cbSize) != ERROR_BUFFER_OVERFLOW)
 		return FALSE;
 	
+	// GetAdaptersAddresses creates a linked-list so we need to allocate space for it
 	iaa = (IP_ADAPTER_ADDRESSES *) HeapAlloc(GetProcessHeap(), 0, cbSize);
 	
 	if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, iaa, &cbSize) == ERROR_SUCCESS)
