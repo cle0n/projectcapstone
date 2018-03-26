@@ -23,8 +23,6 @@ _start:
 		xor 	ebx, ebx
 		inc 	ebx
 		bt  	ecx, 0x1f
-;		xor 	ebx, ebx
-;		inc 	ebx
 		jb 	vmdetected	
 exit:
 		xor eax, eax
