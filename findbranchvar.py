@@ -14,6 +14,7 @@ def OpenProgram(path):
 
 
 def CheckAllBranchesJ(r2, jump):
+    loc = 0
     result = r2.cmdj("/cj cmp")
 
     if not result:
@@ -21,10 +22,19 @@ def CheckAllBranchesJ(r2, jump):
 	return
 
     for line in result:
+#	print(loc)
+	diff = line["offset"] - loc
 	loc = line["offset"]
+	if diff < 4:
+		continue
 	if line["code"][0:4] != "cmp ":
 		continue
+
 	Seeker(r2, str(loc))
+#	r2.cmdj("pdJ 2")[1]	
+#	if r2.cmdj("pdJ 2")[1]["text"][-7:] == "invalid":
+#		continue
+
 	nextLines = r2.cmdj("aoj 2") #This is where that stupid "Oops" is coming from
 	if len(nextLines) < 2:
 		continue
@@ -146,6 +156,7 @@ if __name__ == '__main__':
         Usage()
 
     r2 = OpenProgram(os.path.realpath(args.arg[0]))
+    r2.cmd("e search.flags=false") #Freakin search flags pollute pd results!
 
 #    CheckAllJumps(r2, args.arg[1])
     CheckAllBranchesJ(r2, args.arg[1])	
