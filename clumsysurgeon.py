@@ -19,10 +19,12 @@ def inc(instr, var, context):
                 if "value" in operands[0] and operands[0]["value"] == var:
                         print("Variable being incremented: " + addr + " " + instr["opcode"])
                         context["varState"] = "(" + context["varState"] + ") + 1"
+			context["dirty"] = True
                         
         elif parseMemory(naddr, operands[0]) == var:
                 print("Variable being incremented: " + addr + " " + instr["opcode"])
                 context["varState"] = "(" + context["varState"] + ") + 1"
+		context["dirty"] = True
 
 def dec(instr, var, context):
         naddr = instr["addr"]
@@ -32,10 +34,12 @@ def dec(instr, var, context):
                 if "value" in operands[0] and operands[0]["value"] == var:
                         print("Variable being decremented: " + addr + " " + instr["opcode"])
                         context["varState"] = "(" + context["varState"] + ") - 1"
+			context["dirty"] = True
 
         elif parseMemory(naddr, operands[0]) == var:
                 print("Variable being decremented: " + addr + " " + instr["opcode"])
                 context["varState"] = "(" + context["varState"] + ") - 1"
+		context["dirty"] = True
 
 
 def mov(instr, var, context):
@@ -46,16 +50,20 @@ def mov(instr, var, context):
 		if "value" in operands[0] and operands[0]["value"] == var:
 			print("Variable being overwritten: " + addr + " " + instr["opcode"])
                         if "value" in operands[1]:
- 	                       context["varState"] = operands[1]["value"] + "@" + addr
+ 	                        context["varState"] = operands[1]["value"] + "@" + addr
+				context["dirty"] = True
                         else:
-                               context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
+                                context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
+				context["dirty"] = True
 
 	elif parseMemory(naddr, operands[0]) == var:
 		print("Variable being overwritten: " + addr + " " + instr["opcode"])
                 if "value" in operands[1]:                                        
                         context["varState"] = operands[1]["value"] + "@" + addr
+			context["dirty"] = True
                 else:
                         context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
+			context["dirty"] = True
 
 			
 	if operands[1]["type"] != "mem":
@@ -74,18 +82,23 @@ def xor(instr, var, context):
 			if "value" in operands[1] and operands[1]["value"] == var:
 				print("Variable being zeroed out (" + var + " = 0): " + addr + " " + opcd)
 				context["varState"] = "0"
+				context["dirty"] = True
 			else:
                         	print("Variable being bitmasked: " + addr + " " + opcd)
 				if "value" in operands[1]:
 					context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
+					context["dirty"] = True
 				else:
 					context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])  
+					context["dirty"] = True
         elif parseMemory(naddr, operands[0]) == var:
                 print("Variable being bitmasked: " + addr + " " + opcd)
                 if "value" in operands[1]:
                 	context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
+			context["dirty"] = True
                 else:
                 	context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])
+			context["dirty"] = True
 
 	# There is an elif here to make sure that if there is a xor eax, eax type
 	# instruction we won't trigger two outputs (zeroing out is printed in the above block)
@@ -184,7 +197,7 @@ def parseMemory(addr, oper):
 
 var = "rax"
 
-start = "entry0"
+start = "main"
 finish = "0x4048b4"
 
 
@@ -192,7 +205,7 @@ r2.cmd("aaaa")
 r2.cmd("s " + start)
 bb = r2.cmdj("pdbj")
 addr = str(hex(bb[0]["offset"]))
-context = {"varState" : var+"@"+addr}
+context = {"varState" : var+"@"+addr, "dirty" : False}
 
 for line in bb:
 	# Check to see that we're in the bounds 
@@ -201,10 +214,12 @@ for line in bb:
 		break
 	# Keep track of the current variable state to check if it changes after isDependent()
 	oldState = context["varState"]
-	
+	dirtiness = context["dirty"]
 	# Run our dependency analyzer
 	isDependent(line["offset"], var, context)
 
 	# Print the new variable state if the state changed
 	if oldState != context["varState"]:
 		print("***Variable value: " + context["varState"])
+	if dirtiness != context["dirty"]:
+		print("***Variable dirtied: " + "True" if context["dirty"] else "False")
