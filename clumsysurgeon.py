@@ -1,7 +1,7 @@
 # Import r2pipe and open a file
 # r2 must be defined prior to the declaration of isDependent(), since isDependent() makes use of r2
 import r2pipe
-r2 = r2pipe.open("/home/ian/projectcapstone/tests/asmsrc/antivm-cpu-polymorph-test")
+r2 = r2pipe.open("/bin/ls")
 
 # The following functions are the dependency handlers for each instruction
 # To add a new dependency handler create a function whose name is the instruction in question
@@ -182,16 +182,17 @@ def parseMemory(addr, oper):
 # addr - This is the address of the first instruction in the basic block, written in the form of a hex string, e.g. "0x4000ba"
 
 
-var = "ecx"
-context = {"varState" : var+"@"+addr}
-start = "entry0"
-finish = "0x4000be"
+var = "rax"
+
+start = "main"
+finish = "0x4048b4"
 
 
 r2.cmd("aaaa")
 r2.cmd("s " + start)
 bb = r2.cmdj("pdbJ")
 addr = str(hex(bb[0]["offset"]))
+context = {"varState" : var+"@"+addr}
 
 for line in bb:
 	# Check to see that we're in the bounds 
