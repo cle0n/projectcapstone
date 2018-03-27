@@ -184,13 +184,13 @@ def parseMemory(addr, oper):
 
 var = "rax"
 
-start = "main"
+start = "entry0"
 finish = "0x4048b4"
 
 
 r2.cmd("aaaa")
 r2.cmd("s " + start)
-bb = r2.cmdj("pdbJ")
+bb = r2.cmdj("pdbj")
 addr = str(hex(bb[0]["offset"]))
 context = {"varState" : var+"@"+addr}
 
