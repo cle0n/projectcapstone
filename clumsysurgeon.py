@@ -51,7 +51,10 @@ def mov(instr, var, context):
 		if "value" in operands[0] and operands[0]["value"] == var:
 			print("Variable being overwritten: " + addr + " " + instr["opcode"])
 			if "value" in operands[1]:
-				context["varState"] = operands[1]["value"] + "@" + addr
+				if operands[1]["type"] == "imm":
+					context["varState"] = str(operands[1]["value"])
+				else:
+					context["varState"] = operands[1]["value"] + "@" + addr
 				context["dirty"] = True
 			else:
 				context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
@@ -60,7 +63,10 @@ def mov(instr, var, context):
 	elif parseMemory(naddr, operands[0]) == var:
 		print("Variable being overwritten: " + addr + " " + instr["opcode"])
 		if "value" in operands[1]:                                        
-			context["varState"] = operands[1]["value"] + "@" + addr
+			if operands[1]["type"] == "imm":
+				context["varState"] = str(operands[1]["value"])
+			else:
+				context["varState"] = operands[1]["value"] + "@" + addr
 			context["dirty"] = True
 		else:
 			context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
@@ -216,6 +222,23 @@ def isDependent(r2, addr, var, context):
 	bb     - The basic block that contains the start address, but not necessarily the finish address
 	addr   - This is the address of the first instruction in the basic block, written in the form of a hex string, e.g. "0x4000ba"
 '''
+
+def getAddrs(r2, instr):
+	return r2.cmdj("/cj " + instr)
+
+#Start and finish are given as hex strings, e.g. "0x400ab"
+def varVal(r2, var, start, finish, context):
+	dependencyHandlers = {"mov" : mov, "xor": xor, "dec": dec, "inc": inc}
+	r2.cmd("s " + start)
+	while int(r2.cmd("s"), 16) <= int(finish, 16):
+		instr = r2.cmdj("aoj")[0]
+		if instr["mnemonic"] in dependencyHandlers:
+			dependencyHandlers[instr["mnemonic"]](instr, var, context)
+		else:
+			generic(instr, var, context)
+		r2.cmd("so")
+	return context["varState"]
+
 if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser()
@@ -229,6 +252,47 @@ if __name__ == '__main__':
 	r2 = r2pipe.open(os.path.realpath(args.arg[0]))
 	r2.cmd("aaaa")
 
+	flag1 = False
+	flag2 = False
+	flag3 = False
+	cpuidLocs = getAddrs(r2, "cpuid")
+	for cpuidInstr in cpuidLocs:
+		cpuidInstrLoc = str(hex(cpuidInstr["offset"]))  #Hex string
+		r2.cmd("sb " + cpuidInstrLoc)
+		start = r2.cmd("s")				#Hex string
+		finish = str(hex(r2.cmdj("pdbj")[-1]["offset"]))#Hex string
+		context = {"varState" : "eax"+"@"+start, "dirty" : False}
+		eaxVal = varVal(r2, "eax", start, cpuidInstrLoc, context)
+		if eaxVal == "1":
+			print "eax is one when CPUID is called"
+			flag1 = True
+		btLocs = getAddrs(r2, "bt")
+		for btInstr in btLocs:
+			btInstrLoc = str(hex(btInstr["offset"]))
+			if int(start, 16) <= btInstr["offset"] and btInstr["offset"] <= int(finish, 16):
+				r2.cmd("s " + btInstrLoc)
+				btInstrDetails = r2.cmdj("aoj")[0]
+				if (
+					btInstrDetails["opex"]["operands"][0]["type"] == "reg" and 
+					btInstrDetails["opex"]["operands"][0]["value"] == "ecx" and
+					btInstrDetails["opex"]["operands"][1]["type"] == "imm" and
+					btInstrDetails["opex"]["operands"][1]["value"] == 31
+				):
+					print "31st bit of ecx being checked"
+					flag2 = True
+				context = {"varState" : "ecx"+"@"+cpuidInstrLoc, "dirty" : False}				
+				ecxVal = varVal(r2, "ecx", cpuidInstrLoc, btInstrLoc, context)
+				if ecxVal == "ecx@" + cpuidInstrLoc:
+					print "ecx is unchanged between cpuid and bt commands"
+					flag3 = True
+				if flag1 and flag2 and flag3:
+					print "VM detection code found!"
+					print "cpuid location: " + cpuidInstrLoc
+					print "bt location: " + btInstrLoc
+					flag2 = False #Reset these for the next bt instruction, in case there are a few to check
+					flag3 = False	
+	r2.quit()
+'''
 	var    = "rsp"
 	start  = "main"
 
@@ -240,7 +304,6 @@ if __name__ == '__main__':
 
 	#finish  = str(hex(bb[len(bb) - 1]["offset"]))
 	finish  = "0x402a2a" # different for everyone
-
 
 	# make me a function. and put me in a loop
 	for line in bb:
@@ -258,5 +321,5 @@ if __name__ == '__main__':
 			print("***Variable value: " + context["varState"])
 		if dirtiness != context["dirty"]:
 			print("***Variable dirtied: " + "True" if context["dirty"] else "False")
+'''
 
-	r2.quit()
