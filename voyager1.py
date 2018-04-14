@@ -8,6 +8,13 @@
 	- continue searching for paths from incomplete ones
 	- be able to interactively modify or create paths if analysis fails
 	- store paths on disk?
+    - https://stackoverflow.com/questions/1388818/how-can-i-compare-two-lists-in-python-and-return-matches
+
+	moar notes:
+	- depending on call destination the paths being mapped may overlap or record
+	  more than what is actually there. (ex. syscall, int, or calls (that have 
+      relocs). The path is still correct however. This could be corrected 
+      post-analysis
 
 '''
 
@@ -24,12 +31,23 @@ class Voyager:
 		self.node     = 0
 
 	def ViewPaths(self):
+		print ""
 		for pathindex, path in enumerate(self.pathlist):
 			print "PATH: %d" % (pathindex)
 			for node in path:
 				print str(hex(node))
-
 			print ""
+
+	# Finds and sets first path offset is aligned with
+	def OnFirstPath(self, offset):
+		self.r2.cmd('sb ' + str(hex(offset)))
+		bbp = int(self.r2.cmd('s'), 16)
+		for pindex, path in enumerate(self.pathlist):
+			if bbp in path:
+				self.path = pindex
+				self.node = path.index(bbp)
+				break
+		return int(self.r2.cmd("s"), 16)
 
 	#TODO
 	def SwitchBranch(self):

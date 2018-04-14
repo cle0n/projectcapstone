@@ -1,243 +1,10 @@
-
 import os
 import argparse
 import r2pipe
 
-'''
-	The following functions are the dependency handlers for each instruction
-	To add a new dependency handler create a function whose name is the instruction in question
-	Then add an entry to the dependencyHandlers variable in the isDependent() function
-	instr   - Instruction object for the instruction being analyzed
-	var     - The variable being analyzed
-	context - The context that has been and is being built up by the dependency handlers
-	These functions must be defined prior to the declaration of the dependencyHandlers variable!!
-'''
-def inc(instr, var, context):
-    naddr = instr["addr"]
-    addr = str(hex(naddr))
-    operands = instr["opex"]["operands"]
-    if operands[0]["type"] != "mem":
-		if "value" in operands[0] and operands[0]["value"] == var:
-			print("Variable being incremented: " + addr + " " + instr["opcode"])
-			context["varState"] = "(" + context["varState"] + ") + 1"
-			context["dirty"] = True
-                    
-    elif parseMemory(naddr, operands[0]) == var:
-		print("Variable being incremented: " + addr + " " + instr["opcode"])
-		context["varState"] = "(" + context["varState"] + ") + 1"
-		context["dirty"] = True
+from   eyeofsauron import EyeOfSauron
+from   voyager1    import Voyager
 
-def dec(instr, var, context):
-    naddr = instr["addr"]
-    addr = str(hex(naddr))
-    operands = instr["opex"]["operands"]
-    if operands[0]["type"] != "mem":
-		if "value" in operands[0] and operands[0]["value"] == var:
-			print("Variable being decremented: " + addr + " " + instr["opcode"])
-			context["varState"] = "(" + context["varState"] + ") - 1"
-			context["dirty"] = True
-
-    elif parseMemory(naddr, operands[0]) == var:
-		print("Variable being decremented: " + addr + " " + instr["opcode"])
-		context["varState"] = "(" + context["varState"] + ") - 1"
-		context["dirty"] = True
-
-
-def mov(instr, var, context):
-	naddr = instr["addr"]
-	addr = str(hex(naddr))
-	operands = instr["opex"]["operands"]
-	if operands[0]["type"] != "mem":	
-		if "value" in operands[0] and operands[0]["value"] == var:
-			print("Variable being overwritten: " + addr + " " + instr["opcode"])
-			if "value" in operands[1]:
-				if operands[1]["type"] == "imm":
-					context["varState"] = str(operands[1]["value"])
-				else:
-					context["varState"] = operands[1]["value"] + "@" + addr
-				context["dirty"] = True
-			else:
-				context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
-				context["dirty"] = True
-
-	elif parseMemory(naddr, operands[0]) == var:
-		print("Variable being overwritten: " + addr + " " + instr["opcode"])
-		if "value" in operands[1]:                                        
-			if operands[1]["type"] == "imm":
-				context["varState"] = str(operands[1]["value"])
-			else:
-				context["varState"] = operands[1]["value"] + "@" + addr
-			context["dirty"] = True
-		else:
-			context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
-			context["dirty"] = True
-
-	if operands[1]["type"] != "mem":
-		if "value" in operands[1] and operands[1]["value"] == var:
-			print("Variable being copied: " + addr + " " + instr["opcode"])
-
-	elif parseMemory(naddr, operands[1]) == var:
-		print("Variable being copied: " + addr + " " + instr["opcode"])		
-
-def xor(instr, var, context):
-	naddr = instr["addr"]
-	addr = str(hex(naddr))
-	opcd = instr["opcode"]
-	operands = instr["opex"]["operands"]
-	if operands[0]["type"] != "mem":
-		if "value" in operands[0] and operands[0]["value"] == var:
-			if "value" in operands[1] and operands[1]["value"] == var:
-				print("Variable being zeroed out (" + var + " = 0): " + addr + " " + opcd)
-				context["varState"] = "0"
-				context["dirty"] = True
-			else:
-				print("Variable being bitmasked: " + addr + " " + opcd)
-				if "value" in operands[1]:
-					print operands[1]['value']
-					# operands[1]['value'] may not always be a string
-					context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
-					context["dirty"] = True
-				else:
-					context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])  
-					context["dirty"] = True
-	elif parseMemory(naddr, operands[0]) == var:
-		print("Variable being bitmasked: " + addr + " " + opcd)
-		if "value" in operands[1]:
-			context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
-			context["dirty"] = True
-		else:
-			context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])
-			context["dirty"] = True
-
-	# There is an elif here to make sure that if there is a xor eax, eax type
-	# instruction we won't trigger two outputs (zeroing out is printed in the above block)
-	elif operands[1]["type"] != "mem":
-		if "value" in operands[1] and operands[1]["value"] == var:
-			print("Variable being used as a bitmask: " + addr + " " + opcd)
-	elif parseMemory(naddr, operands[1]) == var:
-		print("Variable being used as a bitmask: " + addr + " " + opcd)
-
-
-''' 
-	This function parses a memory operand and prints it in nice form
-	It will do nice things like evaluate rip (note: currently doesn't work for eip, fix that)
-	addr - The address of the instruction which uses the given piece of memory as an operand. Address is input as a decimal integer.
-	oper - The operand object for the given piece of memory
-''' 
-def parseMemory(addr, oper):
-	scale = oper["scale"]
-	disp  = oper["disp"]
-	size  = oper["size"]
-	sizeTable = {1 : "byte", 2 : "word", 4 : "dword", 8 : "qword"}
-
-	if "base" in oper:
-		base = oper["base"]
-		# If base isn't RIP then just use that register as the first term
-		if base != "rip":			
-			front = base			
-		# If the base is RIP then simplify output by adding instr. address to displacement
-		else:					
-		   	front = str(hex(addr + disp))
-
-		if "index" in oper:
-			index = oper["index"]
-			# Simplify multiplication away if scale = 1
-			if scale == 1:			
-				mult = ""
-			else:
-				mult = str(scale) + "*"
-
-			# If there isn't an end term because disp = 0 or the base is RIP, exclude the final + sign
-			if disp == 0 or base == "rip":	
-				middle = " + " + mult + index
-			else:
-				middle = " + " + mult + index + " + "
-		else:
-			# If there's no index there's no middle term
-			if disp == 0 or base == "rip":	
-				middle = ""
-			else:
-				# Put a space here instead if there's an end term
-				middle = " "		
-
-		if base != "rip" and disp != 0:
-			# Print the right sign for the displacement
-			if disp > 0:			
-				end = "+ " + str(hex(disp))
-			else:
-				end = "- " + str(hex(-disp))
-		else:
-			# No term if there's no displacement or if base is RIP
-			end = ""			
-
-		return sizeTable[size] + " [" + front + middle + end + "]"
-		
-	# This handles the other kind of mem object, a memory segment. This probably isn't generic enough to handle everything yet.
-	elif "segment" in oper:				
-		segment = oper["segment"]
-		return sizeTable[size] + " " + segment + ":[" + str(hex(disp)) + "]"
-
-'''
-	This is the fall-back function if no dependency handler is specified
-	It will not affect the context (since it won't know what to do exactly)
-	This will still pick out instructions which have the variable as an operand though	
-'''
-def generic(instr, var, context):
-	naddr = instr["addr"]
-	addr  = str(hex(instr["addr"]))
-	for oper in instr["opex"]["operands"]:
-		if "value" in oper and oper["value"] == var:
-			print("Variable found in operand: " + addr + " " + instr["opcode"])
-		elif oper["type"]=="mem" and parseMemory(addr, oper) == var:
-			print("Variable found in operand: " + addr + " " + instr["opcode"])
-
-
-'''
-	This is our little dispatch function which picks out the instruction type and sends it off to the appropriate handler
-	addr    - The address of the instruction which is being analyzed. Address is input as a decimal integer.
-	var     - This is the variable being analyzed
-	context - This is the context we are building up. It contains the information we're extracting about the variable.
-'''
-def isDependent(r2, addr, var, context):
-	dependencyHandlers = {"mov" : mov, "xor": xor, "dec": dec, "inc": inc}
-	naddr = addr
-	addr  = str(hex(addr))
-
-	r2.cmd("s " + addr)
-	instr = r2.cmdj("aoj")[0]
-
-	if instr["mnemonic"] in dependencyHandlers:
-		dependencyHandlers[instr["mnemonic"]](instr, var, context)
-	else:
-		generic(instr, var, context)
-
-
-'''
-	var - The variable being examined. Examples: var = "ecx", var = "qword [rax]", var = "dword [0x28932]", var = "byte [rbp + 2*rsp + 0x37283]"
-	context - This is our big bag of information. This will be populated by the dependency handlers with all the info that they gain.
-	
-	Currently there is only the variable state being tracked, but more entries will be added as needed.
-	start  - This is the first function or address to start at. Addresses are written as hex strings.
-	finish - This is the last address to analyze.
-	bb     - The basic block that contains the start address, but not necessarily the finish address
-	addr   - This is the address of the first instruction in the basic block, written in the form of a hex string, e.g. "0x4000ba"
-'''
-
-def getAddrs(r2, instr):
-	return r2.cmdj("/cj " + instr)
-
-#Start and finish are given as hex strings, e.g. "0x400ab"
-def varVal(r2, var, start, finish, context):
-	dependencyHandlers = {"mov" : mov, "xor": xor, "dec": dec, "inc": inc}
-	r2.cmd("s " + start)
-	while int(r2.cmd("s"), 16) <= int(finish, 16):
-		instr = r2.cmdj("aoj")[0]
-		if instr["mnemonic"] in dependencyHandlers:
-			dependencyHandlers[instr["mnemonic"]](instr, var, context)
-		else:
-			generic(instr, var, context)
-		r2.cmd("so")
-	return context["varState"]
 
 if __name__ == '__main__':
 
@@ -255,22 +22,40 @@ if __name__ == '__main__':
 	flag1 = False
 	flag2 = False
 	flag3 = False
-	cpuidLocs = getAddrs(r2, "cpuid")
+
+	e = EyeOfSauron()
+	p = Voyager(r2)
+	p.PathFinder([], p.bbs[0]['addr'])
+
+	cpuidLocs = e.SearchInsn(r2, "cpuid")
 	for cpuidInstr in cpuidLocs:
-		cpuidInstrLoc = str(hex(cpuidInstr["offset"]))  #Hex string
-		r2.cmd("sb " + cpuidInstrLoc)
-		start = r2.cmd("s")				#Hex string
-		finish = str(hex(r2.cmdj("pdbj")[-1]["offset"]))#Hex string
-		context = {"varState" : "eax"+"@"+start, "dirty" : False}
-		eaxVal = varVal(r2, "eax", start, cpuidInstrLoc, context)
+		cpuidInstrLoc = cpuidInstr["offset"]
+		# keep offsets/addr as numbers when passing to Voyager or EyeOfSauron
+		start  = p.OnFirstPath(cpuidInstrLoc)
+		finish = r2.cmdj("pdbj")[-1]["offset"]
+
+		# need to backtrace eax if its not in the block "cpuid" is in
+		e.NewContext('eax', start)
+		eaxVal = e.ContextBlockTrace('eax', r2)
+		
 		if eaxVal == "1":
 			print "eax is one when CPUID is called"
 			flag1 = True
-		btLocs = getAddrs(r2, "bt")
+
+		btLocs = e.SearchInsn(r2, "bt")
 		for btInstr in btLocs:
-			btInstrLoc = str(hex(btInstr["offset"]))
-			if int(start, 16) <= btInstr["offset"] and btInstr["offset"] <= int(finish, 16):
-				r2.cmd("s " + btInstrLoc)
+			btInstrLoc = btInstr["offset"]
+			# TODO:
+			# -  remove start and finish. Can't trust offset of "bt" to be after 
+			#    "cpuid" offset, need to backtrack along path
+			# 1. Seek to path block containing "bt"
+			# 2. Verify "bt" is aligned within block
+			# 3. Backtrace until "cpuid" is found. Can then assume "bt" is after
+			#    "cpuid"
+			if start <= btInstr["offset"] and btInstr["offset"] <= finish:
+				#TODO: Seeking should be handled by Voyager to keep sync with r2
+				#      session and block
+				r2.cmd("s " + str(hex(btInstrLoc)))
 				btInstrDetails = r2.cmdj("aoj")[0]
 				if (
 					btInstrDetails["opex"]["operands"][0]["type"] == "reg" and 
@@ -280,46 +65,30 @@ if __name__ == '__main__':
 				):
 					print "31st bit of ecx being checked"
 					flag2 = True
-				context = {"varState" : "ecx"+"@"+cpuidInstrLoc, "dirty" : False}				
-				ecxVal = varVal(r2, "ecx", cpuidInstrLoc, btInstrLoc, context)
-				if ecxVal == "ecx@" + cpuidInstrLoc:
+
+				e.NewContext('ecx', cpuidInstrLoc)
+				ecxVal = e.ContextBlockTrace('ecx', r2)
+
+				if ecxVal == "ecx@" + str(hex(cpuidInstrLoc)):
 					print "ecx is unchanged between cpuid and bt commands"
 					flag3 = True
+
 				if flag1 and flag2 and flag3:
 					print "VM detection code found!"
-					print "cpuid location: " + cpuidInstrLoc
-					print "bt location: " + btInstrLoc
+					print "cpuid location: " + str(hex(cpuidInstrLoc))
+					print "bt location: " + str(hex(btInstrLoc))
 					flag2 = False #Reset these for the next bt instruction, in case there are a few to check
 					flag3 = False	
 	r2.quit()
-'''
-	var    = "rsp"
-	start  = "main"
 
-	r2.cmd("s " + start)
 
-	bb      = r2.cmdj("pdbj")
-	addr    = str(hex(bb[0]["offset"]))
-	context = {"varState" : var+"@"+addr, "dirty" : False}
 
-	#finish  = str(hex(bb[len(bb) - 1]["offset"]))
-	finish  = "0x402a2a" # different for everyone
 
-	# make me a function. and put me in a loop
-	for line in bb:
-		# Check to see that we're in the bounds (block boundary or function boundary or both?)
-		if line["offset"] > int(finish, 16):
-			break
 
-		# Keep track of the current variable state to check if it changes after isDependent()
-		oldState  = context["varState"]
-		dirtiness = context["dirty"]
 
-		isDependent(r2, line["offset"], var, context)
 
-		if oldState != context["varState"]:
-			print("***Variable value: " + context["varState"])
-		if dirtiness != context["dirty"]:
-			print("***Variable dirtied: " + "True" if context["dirty"] else "False")
-'''
+
+
+
+
 
