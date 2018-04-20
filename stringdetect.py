@@ -1,3 +1,15 @@
+'''
+	StringDetect
+	notes:
+	- Able to search program given a set list of words.
+	- Word list must be speicifed in code.
+	- Base64 encoded and searched as well
+	
+	Output:
+	- Word found either by raw string or base64
+	- Location
+'''
+
 #!/usr/bin/python
 import r2pipe
 import hashlib
