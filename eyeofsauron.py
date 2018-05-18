@@ -41,7 +41,7 @@ class Nazgul:
 				context["varState"] = "(" + context["varState"] + ") + 1"
 				context["dirty"] = True
 		                
-		elif parseMemory(naddr, operands[0]) == var:
+		elif self.parseMemory(naddr, operands[0]) == var:
 			print("Variable being incremented: " + addr + " " + instr["opcode"])
 			context["varState"] = "(" + context["varState"] + ") + 1"
 			context["dirty"] = True
@@ -56,7 +56,7 @@ class Nazgul:
 				context["varState"] = "(" + context["varState"] + ") - 1"
 				context["dirty"] = True
 
-		elif parseMemory(naddr, operands[0]) == var:
+		elif self.parseMemory(naddr, operands[0]) == var:
 			print("Variable being decremented: " + addr + " " + instr["opcode"])
 			context["varState"] = "(" + context["varState"] + ") - 1"
 			context["dirty"] = True
@@ -76,10 +76,10 @@ class Nazgul:
 						context["varState"] = operands[1]["value"] + "@" + addr
 					context["dirty"] = True
 				else:
-					context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
+					context["varState"] = self.parseMemory(naddr, operands[1]) + "@" + addr
 					context["dirty"] = True
 
-		elif parseMemory(naddr, operands[0]) == var:
+		elif self.parseMemory(naddr, operands[0]) == var:
 			print("Variable being overwritten: " + addr + " " + instr["opcode"])
 			if "value" in operands[1]:                                        
 				if operands[1]["type"] == "imm":
@@ -88,14 +88,14 @@ class Nazgul:
 					context["varState"] = operands[1]["value"] + "@" + addr
 				context["dirty"] = True
 			else:
-				context["varState"] = parseMemory(naddr, operands[1]) + "@" + addr
+				context["varState"] = self.parseMemory(naddr, operands[1]) + "@" + addr
 				context["dirty"] = True
 
 		if operands[1]["type"] != "mem":
 			if "value" in operands[1] and operands[1]["value"] == var:
 				print("Variable being copied: " + addr + " " + instr["opcode"])
 
-		elif parseMemory(naddr, operands[1]) == var:
+		elif self.parseMemory(naddr, operands[1]) == var:
 			print("Variable being copied: " + addr + " " + instr["opcode"])		
 
 	def _xor(self, instr, var, context):
@@ -117,15 +117,15 @@ class Nazgul:
 						context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
 						context["dirty"] = True
 					else:
-						context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])  
+						context["varState"] = "(" + context["varState"] + ") | " + self.parseMemory(naddr, operands[1])  
 						context["dirty"] = True
-		elif parseMemory(naddr, operands[0]) == var:
+		elif self.parseMemory(naddr, operands[0]) == var:
 			print("Variable being bitmasked: " + addr + " " + opcd)
 			if "value" in operands[1]:
 				context["varState"] = "(" + context["varState"] + ") | " + operands[1]["value"]
 				context["dirty"] = True
 			else:
-				context["varState"] = "(" + context["varState"] + ") | " + parseMemory(naddr, operands[1])
+				context["varState"] = "(" + context["varState"] + ") | " + self.parseMemory(naddr, operands[1])
 				context["dirty"] = True
 
 		# There is an elif here to make sure that if there is a xor eax, eax type
@@ -134,7 +134,7 @@ class Nazgul:
 		elif operands[1]["type"] != "mem":
 			if "value" in operands[1] and operands[1]["value"] == var:
 				print("Variable being used as a bitmask: " + addr + " " + opcd)
-		elif parseMemory(naddr, operands[1]) == var:
+		elif self.parseMemory(naddr, operands[1]) == var:
 			print("Variable being used as a bitmask: " + addr + " " + opcd)
 
 
@@ -150,7 +150,7 @@ class Nazgul:
 		for oper in instr["opex"]["operands"]:
 			if "value" in oper and oper["value"] == var:
 				print("Variable found in operand: " + addr + " " + instr["opcode"])
-			elif oper["type"]=="mem" and parseMemory(addr, oper) == var:
+			elif oper["type"]=="mem" and self.parseMemory(addr, oper) == var:
 				print("Variable found in operand: " + addr + " " + instr["opcode"])
 
 	''' 
@@ -161,7 +161,7 @@ class Nazgul:
 		oper - The operand object for the given piece of memory
 	''' 
 ###################################################################################
-	def ParseMemory(self, addr, oper):
+	def parseMemory(self, addr, oper):
 		scale = oper["scale"]
 		disp  = oper["disp"]
 		size  = oper["size"]
