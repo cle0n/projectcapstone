@@ -30,6 +30,7 @@ def InitEmu(r2, BITS=32, ARCH='x86'):
 	r2.cmd('e io.cache=true')
 	r2.cmd('e asm.bits=' + str(BITS))
 	r2.cmd('e asm.arch=' + ARCH)
+	r2.cmd('e asm.emu=true')
 	# Initialize ESIL VM
 	r2.cmd('aei')
 	# Set the starting point
@@ -56,10 +57,23 @@ def main():
 	
 	symbols = r2.cmdj('isj')
 	
+	# What if there is more than one reference to RegOpenKey, or multiple kinds
+	# of RegOpenKey functions?
 	for sym in symbols:
 		if avm_strings.susp_api[0] in sym['name']:
 			api_regopenkey = sym['name']
 	
+	# Check to see if api_regopenkey was assigned a value
+	try:
+		api_regopenkey
+	except NameError:
+		print "No references to RegOpenKey detected"
+		r2.quit()
+		exit(0)
+	else:
+		print "Reference to RegOpenKey detected"
+	
+	# What if RegOpenKey is used more than once?
 	# axt - find references of regopenkey
 	usageloc = r2.cmdj('axtj @ sym.' + api_regopenkey)
 	
