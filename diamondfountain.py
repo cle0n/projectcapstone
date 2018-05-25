@@ -17,7 +17,7 @@
 	
 	TODO:
 	- For API calls, need to determine how many arguments were pushed on the
-	  stack so we can adjust it accordingly after emulation. (assuming cdecl)
+	  stack so we can adjust it accordingly after emulation. (assuming stdcall)
 	- How to determine if cdecl or stdcall? Let user decide? what if obfuscated?
 	- What if CALL -> JMP like wprintf?? ( Monitor EIP instead of CALL insn )
 	- Do better instruction parsing. Not every command needs r2 or eapi.
