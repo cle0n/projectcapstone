@@ -1,60 +1,96 @@
 '''
-	https://github.com/icchy/tracecorn
-	https://github.com/PyAna/PyAna
+	Steps:
+	
+	- In one terminal do:
+	$ r2 -qc=h program.exe
+	
+	This starts r2 on a local webserver
+	
+	- In another terminal do:
+	$ python diamondfountain.py
+	
+	This connects to r2 on local webserver
 
-	https://rkx1209.github.io/2017/08/27/gsoc-final-report.html
+	*Visual Mode not supported.
+	*Certain r2 commands won't work
 	
-	- emulate fs segment register for runtime API loading
-	- look into de? dt? ds? dts?
-	  > dts may be useful for state tracking
-	  > (just see how things are done and replicate them in python)
+	
+	TODO:
+	- For API calls, need to determine how many arguments were pushed on the
+	  stack so we can adjust it accordingly after emulation. (assuming cdecl)
+	- How to determine if cdecl or stdcall? Let user decide? what if obfuscated?
+	- What if CALL -> JMP like wprintf?? ( Monitor EIP instead of CALL insn )
+	- Do better instruction parsing. Not every command needs r2 or eapi.
+	- Have some command to view internal data structure that we manage and be
+	  able to edit them?
+	- Build a configuration for each API (stack arguments, return values, etc)
 
-	- command is read first before anything. obviously run init first then if
-	
-	- upon script initialization set a variable or something in r2 session so
-	  that when invoking this script again only the pipe has to be opened
-	
-	- script should look at all imports and save them in a lookup table for
-	  call hook to look at
-	  
-	- for malloc calls use aeim [address] [space] to allocate space. Save EBP 
-	  and ESP beforehand then restore them right after.
-	  
-	- emulate TEB + PEB. initialize memory with aeim like above. Populate it with
-	  mock values. Need to figure out how to load modules
-	
-	
-	run this plugin in a r2 session like this:
-	[0x00401000]> . /[path to plugin].py [args]
-		
 '''
 
-import os
-import argparse
 import r2pipe
 
-class avm_strings:
+
+class ApiEmu:
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
 	]
 	
-	susp_api = [
-		'RegOpenKey',
-	]
+	def __init__(self):
+		self.SYMBOLS = {
+			'RegOpenKeyExW': self._RegOpenKeyExW,
+			'RegCloseKey'  : self._RegCloseKey,
+			'ExitProcess'  : self._ExitProcess,
+			'_wprintf'     : self.__wprintf,
+		}
+		
+	def _RegOpenKeyExW(self, r2):
+		print "RegOpenKeyExW"
+		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+		
+		strarg = r2.cmd('psw @ [esp+4]')
+		
+		if strarg in ApiEmu.susp_reg_key:
+			print "! VMware registry key check"
+			print "  > ARG: '" + strarg + "'"
+		
+		r2.cmd('ar eax=0')
+		
+		return
+	
+	def _RegCloseKey(self, r2):
+		print "RegCloseKey"
+		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+		r2.cmd('ar eax=0')
+		return
+		
+	def _ExitProcess(self, r2):
+		print "ExitProcess"
+		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+		return
+		
+	def __wprintf(self, r2):
+		print "_wprintf"
+		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+		r2.cmd('ar eax=0')
+		return
 
-#   INITIALIZATION STUFF
+#   COMMAND FUNCTIONS
 ###################################################################################
-def InitPEB():
+def Build_TEB_PEB(r2, eapi):
 	return
 
-'''
-	Look at all symbols with 'isj' or something. Get there values and put them
-	in a dictionary
-'''
-def InitSymbols():
-	return
+SYMBOLS = { }
 
-def InitEmu(r2, BITS=32, ARCH='x86'):
+def BuildSymbols(r2, eapi):
+	for symbol in r2.cmdj('isj'):
+		content = r2.cmdj('pxrj 4 @ ' + hex(symbol['vaddr']))
+		for API in eapi.SYMBOLS:
+			if API in symbol['flagname']:
+				SYMBOLS[content[0]['value']] = eapi.SYMBOLS[API]
+	
+	#usageloc = r2.cmdj('axtj @ sym.' + someapi)
+
+def InitEmu(r2, eapi=None, BITS=32, ARCH='x86'):
 	r2.cmd('aaaa')
 	r2.cmd('e io.cache=true')
 	r2.cmd('e asm.bits=' + str(BITS))
@@ -64,93 +100,80 @@ def InitEmu(r2, BITS=32, ARCH='x86'):
 	r2.cmd('aeip')
 	r2.cmd('aeim 0xFFFFD000 0x2000 stack')
 
-def Init():
-	parser = argparse.ArgumentParser()
-	parser.add_argument('arg', nargs='*')
-	args   = parser.parse_args()
-	
-	if not args.arg:
-		r2 = r2pipe.open()
-	else:
-		r2 = r2pipe.open(os.path.realpath(args.arg[0]))
-	
-	return r2
-
-#   INSTRUCTION HOOKS
-###################################################################################	
-def hook_call(r2, c):
-	print "! Got CALL"
-	
-	# if call goes to API then need to lookup API in symbol dict and call its 
-	# handler and-or modify the return value
-	
-	# call someimmediateoffset
-	if 'jump' in c[0]:
-		print "  > CALL IMM"
-		return 0
-	else:
-		# call eax
-		# Check whats in eax and see if it is in the symbol dictionary
-		if 'reg' == c[0]['opex']['operands'][0]['type']:
-			print "  > CALL REG"
-			return 1
-	return 1
-
-# Hook Table
-hooks = {
-	'call' : hook_call,
-}
-
-
-#   COMMANDS
-###################################################################################
-def e_cont(r2):
+def Continue(r2, eapi=None):
 	while True:
 		r2.cmd('aes')
 		insn = r2.cmdj('aoj @ eip')
+
+		# check if EIP is in API hooks list instead--or in addtion to CALL?
 		
-		if insn[0]['mnemonic'] in hooks:
-			ret = hooks[insn[0]['mnemonic']](r2, insn)
+		if insn[0]['mnemonic'] in IHOOKS:
+			ret = IHOOKS[insn[0]['mnemonic']](r2, insn)
 			if ret == 1:
-				r2.cmd('s eip') # set currseek
 				break
-	return
-	
-'''
-[0x401000]> . [plugin].py --command [cmd]
+	r2.cmd('s eip')
 
-'''
-def evalcommand():
-	return
+def Help(dummy0=None, dummy1=None):
+	HELP = """COMMANDS:
+	init - Initializes ESIL VM
+	symb - Builds list of imports links known ones to our emulated API's
+	cont - Continue Emulation
+	stop - Exit and stop r2
+	help - Display this help"""
+	print HELP
 
+COMMANDS = {
+	'symb': BuildSymbols,
+	'init': InitEmu,
+	'cont': Continue,
+	'help': Help,
+}
+
+#   INSTRUCTION HOOK CALLBACKS
+###################################################################################
+def HOOK_CALL(r2, insn):
+	if 'jump' in insn[0]:
+		print "! CALL " + hex(insn[0]['jump'])
+	else:
+		# step into the CALL
+		r2.cmd('aes')
+		addr = int(r2.cmd('s'), 16)
+		if addr in SYMBOLS:
+			SYMBOLS[addr](r2)
+		else:
+			r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+			# adjust sp and ip to recover from effects of the CALL
+			# does not account for arguments on stack! 
+		
+	return 1
+
+IHOOKS = {
+	'call' : HOOK_CALL,
+}
+
+#   MAIN
+###################################################################################
 def main():
-	r2 = Init()
-	InitEmu(r2)
+	r2   = r2pipe.open('http://127.0.0.1:9090')
+	eapi = ApiEmu()
 	
-	# test call
-	e_cont(r2)
-	
-	# evalcommand()
-	
-	# Put me in Init section
-	'''
-	symbols = r2.cmdj('isj')
-	
-	# axt - find references to some api
-	usageloc = r2.cmdj('axtj @ sym.' + someapi)
-	'''
-	
-	
-	#Put me in RegOpenKey emulation function
-	'''
-	strarg = r2.cmd('psw @ [esp+4]')
-	
-	if avm_strings.susp_reg_key[0] == strarg:
-		print "! @ " + hex(usageloc[0]['from']) + " VMware registry key check"
-		print "  > ARG: '" + strarg + "'"
-	'''
-	
-	r2.quit()
+	print r2.cmd('?E Bruh')
+	print "Enter help for a list of commands."
+
+	while True:
+		command = raw_input('[' + r2.cmd('s') + ']> ')
+		
+		if command == "stop":
+			r2.quit() # doesn't always quit for some reason. Use pkill r2.
+			break
+		
+		if command in COMMANDS:
+			COMMANDS[command](r2, eapi) # do better instruction parsing
+		else:
+			print r2.cmd(command)
+
+
+
 	
 if __name__ == '__main__':
 	main()
