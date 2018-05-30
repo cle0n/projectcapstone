@@ -13,6 +13,8 @@
 
 	*Visual Mode not supported.
 	*Certain r2 commands won't work
+	*Can't use pipes :(
+	*Also can't use semi-colons with our personal commands
 	
 	QUESTIONS:
 	- How to tell if stdcall or cdecl?
@@ -45,6 +47,7 @@ import r2pipe
 
 
 class ApiEmu:
+	ret_stk = []
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
 	]
@@ -80,7 +83,7 @@ class ApiEmu:
 		
 	def _DiamondDefault(self, r2):
 		print "! Unknown API"
-		print r2.cmd('pd 1 @ eip')
+		print r2.cmd('pd 1')
 		return
 
 	def _GetAdaptersAddresses(self, r2):
@@ -103,6 +106,9 @@ class ApiEmu:
 		print "! FindClose #TODO"
 	def _EnumProcesses(self, r2):
 		print "! EnumProcesses #TODO"
+		r2.cmd('wx 562 @ [esp]')
+		r2.cmd('wx 4 @ [esp+8]')
+		r2.cmd('ar eax=256')
 	def _OpenProcess(self, r2):
 		print "! OpenProcess #TODO"
 	def _CloseHandle(self, r2):
@@ -164,7 +170,7 @@ def Build_TEB_PEB(r2, eapi=None):
 	
 	# use wv to write addresses
 	r2.cmd('wv 0x1000 @ 0x30')
-	
+	f
 	# TODO: finish inner PEB structures
 	# TODO: map kernel32 + ntdll + kernelbase.
 	
@@ -188,6 +194,7 @@ def BuildSymbols(r2, eapi):
 	#usageloc = r2.cmdj('axtj @ sym.' + someapi)
 
 def InitEmu(r2, eapi=None, BITS=32, ARCH='x86'):
+	# Actual init stuff
 	r2.cmd('aaaa')
 	r2.cmd('e io.cache=true')
 	r2.cmd('e asm.bits=' + str(BITS))
@@ -195,10 +202,31 @@ def InitEmu(r2, eapi=None, BITS=32, ARCH='x86'):
 	r2.cmd('e asm.emu=true')
 	r2.cmd('aei')
 	r2.cmd('aeip')
-	r2.cmd('aeim 0xFFFFD000 0x2000 stack')
+	r2.cmd('aeim 0xFFFFD000 0x32000 stack')
+	# Cause we always run symb anyway
+	BuildSymbols(r2, eapi)
+
+	# Make sure cont doesn't skip the first instruction!
+	# Don't need breaks cause we're not in a loop
+	# Don't want any seeking ('aes', 's eip') so cont works properly 
+	addr = int(r2.cmd('s'), 0)
+	
+	if addr in SYMBOLS:
+		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
+		SYMBOLS[addr](r2)
+	
+	insn = r2.cmdj('aoj @ eip')
+	
+	if insn[0]['mnemonic'] in IHOOKS:
+		IHOOKS[insn[0]['mnemonic']](r2, insn, eapi)
+
 
 def Continue(r2, eapi=None):
 	while True:
+		# Found a bit of a subtle bug here.
+		# If the very first instruction should be hooked
+		# it would've been skipped by the aes command
+		# before we could analyze it.
 		r2.cmd('aes')
 		addr = int(r2.cmd('s'), 0)
 		
@@ -210,9 +238,10 @@ def Continue(r2, eapi=None):
 		insn = r2.cmdj('aoj @ eip')
 		
 		if insn[0]['mnemonic'] in IHOOKS:
-			ret = IHOOKS[insn[0]['mnemonic']](r2, insn)
+			ret = IHOOKS[insn[0]['mnemonic']](r2, insn, eapi)
 			if ret == 1:
 				break
+
 	r2.cmd('s eip')
 
 def Help(dummy0=None, dummy1=None):
@@ -233,14 +262,37 @@ COMMANDS = {
 
 #   INSTRUCTION HOOK CALLBACKS
 ###################################################################################
-def HOOK_CALL(r2, insn):
+def HOOK_CALL(r2, insn, eapi):
 	if 'jump' in insn[0]:
 		print "! CALL " + hex(insn[0]['jump'])
 		
+		# When a call is made add the expected return value to the stack
+		expected_ret_val = hex(r2.cmdj('aoj 2')[1]['addr'])
+		print "! EXPECTED RETURN " + expected_ret_val
+		eapi.ret_stk.append(expected_ret_val)
+	
+		
+	return 1
+def HOOK_RET(r2, insn, eapi):
+	ret_val = hex(r2.cmdj('pxwj @ esp')[0]) # This is the actual return value
+	print "! RET " + ret_val
+	# Check for expected return addresses, if there aren't any then
+	# we hit a RET instruction without a CALL instruction
+	if eapi.ret_stk:
+		expected_ret_val = eapi.ret_stk.pop()
+		if expected_ret_val != ret_val:
+			print "! UNEXPECTED RETURN (LIKELY STACK MANIPULATION)"
+			print "EXPECTED: " + expected_ret_val
+			print "ACTUAL: " + ret_val
+		else:
+			print "! VALID RETURN"
+	else:
+		print "! UNEXPECTED RETURN (RET WITHOUT CALL)"
 	return 1
 
 IHOOKS = {
 	'call' : HOOK_CALL,
+	'ret'  : HOOK_RET,
 }
 
 #   MAIN
