@@ -50,6 +50,8 @@ import sys
 
 class ApiEmu:
 	ret_stk = []
+	CONTEXT = {}
+
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
 	]
@@ -433,9 +435,35 @@ def HOOK_RET(r2, insn, eapi):
 		print "! UNEXPECTED RETURN (RET WITHOUT CALL)"
 	return 1
 
+def HOOK_CPUID(r2, insn, eapi):
+	eax_val = int(r2.cmd("ar eax"), 16) # Get value of EAX before CPUID call
+	if eax_val == 1:
+		print "! CPUID RUN WHILE EAX == 1"
+		r2.cmd("aes")
+		ecx_val = int(r2.cmd("ar ecx"), 16) # Get value of ECX after CPUID call, this could cause bugs like cont missing an instruction...
+		eapi.CONTEXT['CPUID'] = {'eax': eax_val, 'ecx': ecx_val}
+	return 1
+
+def HOOK_BT(r2, insn, eapi):
+	ecx_val = int(r2.cmd("ar ecx"), 16)
+	if ecx_val == eapi.CONTEXT['CPUID']['ecx']:
+		print "! ECX UNCHANGED SINCE LAST CPUID CALL"
+		btInstrDetails = r2.cmdj("aoj @ eip")[0]
+		if (
+			btInstrDetails["opex"]["operands"][0]["type"] == "reg" and 
+			btInstrDetails["opex"]["operands"][0]["value"] == "ecx" and
+			btInstrDetails["opex"]["operands"][1]["type"] == "imm" and
+			btInstrDetails["opex"]["operands"][1]["value"] == 31
+		):
+			print "! 31ST BIT OF ECX BEING CHECKED"
+			print "! VM DETECTION CODE FOUND"
+	return 1
+
 IHOOKS = {
 	'call' : HOOK_CALL,
 	'ret'  : HOOK_RET,
+	'cpuid': HOOK_CPUID,
+	'bt'   : HOOK_BT,
 }
 
 #   MAIN
