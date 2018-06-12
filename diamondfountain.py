@@ -45,6 +45,8 @@ import readline
 import r2pipe
 import random
 import sys
+import time
+import os
 #import pefile
 
 
@@ -356,20 +358,71 @@ def Continue(r2, eapi=None, args=None):
 		count -= 1
 		r2.cmd('s eip')
 
+def Api(r2, eapi=None, args=None):
+	BadAPIs = {"ShellExecuteA", "AdjustTokenPrivileges", 
+		   "CheckRemoteDebuggerPresent", "OleGetClipboard", 
+		   "GetCommandLineA", "TlsGetValue", 
+		   "Swaggertester", "IsDebuggerPresent"}
+
+	for symbol in r2.cmdj('isj'):
+		for APIs in BadAPIs:	
+			if APIs in symbol['flagname']:			
+				print APIs
+
+def Str(r2, eapi=None, args=None):
+	print "Hello."	
+	
+	r2 = r2pipe.open("/home/liam/Desktop/e67aa9da71042fe85d03b7f57c18e611d3d16167ca9f86615088f2fd98b17a99copy")
+	filename = "/home/liam/list.txt";
+
+
+	print ("STRING ENCODE SEARCH")
+	print ("--------------------")
+	with open(filename) as f:
+		content = f.read().splitlines()
+		for index in range(len(content)):	
+			cmd = r2.cmdj("/j " + content[index]+ " 2> /dev/null")
+			if cmd:
+				addr= str(hex(cmd[0]["offset"]))
+				string= str(cmd[0]["data"])
+				print ("FOUND: "+ content[index]+ " in " + string + " was found at " + addr)
+			if not cmd:
+				print (content[index] + " WAS NOT FOUND.")
+
+	print (" ")
+	print ("BASE64 ENCODE SEARCH")
+	print ("--------------------")
+	with open(filename) as f:
+		content = f.read().splitlines()
+		for index in range(len(content)):
+			base64Encode = base64.b64encode(content[index])
+			cmd = r2.cmdj("/j " + base64Encode + " 2> /dev/null")
+			if cmd:
+				addr= str(hex(cmd[0]["offset"]))
+				string= str(cmd[0]["data"])
+				print ("FOUND: "+ content[index]+ "["+base64Encode +"]"+ " in " + string + " was found at " + addr)
+			if not cmd:
+				print (content[index]+ "["+base64Encode +"]" + " WAS NOT FOUND.")
+
 
 def Help(dummy0=None, dummy1=None, dummy2=None):
 	HELP = """COMMANDS:
 	init - Initializes ESIL VM
 	symb - Builds list of imports links known ones to our emulated API's
 	cont - Continue Emulation
+	api  - Get a list of Suspicious APIs in the malware.
+	str  - Searches malware for malisious looking strings.
 	stop - Exit and stop r2
 	help - Display this help"""
 	print HELP
+	
 
 COMMANDS = {
 	'symb': BuildSymbols,
 	'init': InitEmu,
 	'cont': Continue,
+	'api': Api,
+	'string': Str,
 	'help': Help,
 }
 
@@ -469,6 +522,11 @@ IHOOKS = {
 #   MAIN
 ###################################################################################
 def main():
+	
+	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -qc=h ~/Desktop/e67aa9da71042fe85d03b7f57c18e611d3d16167ca9f86615088f2fd98b17a99copy\" '")
+		
+	time.sleep(1);
+	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
 	eapi = ApiEmu()
 	bro = random.choice(['Bruh', 'Bro', 'Breh', 'Brah', 'Broseph', 'Brocahontas', 'Brometheous'])
