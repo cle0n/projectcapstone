@@ -45,6 +45,7 @@ import readline
 import r2pipe
 import pefile
 import sys
+import base64
 
 
 class ApiEmu:
