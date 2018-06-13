@@ -17,37 +17,34 @@
 	*Also can't use semi-colons with our personal commands
 	
 	QUESTIONS:
-	- How to tell if stdcall or cdecl?
+	- How to tell if stdcall or cdecl? Can't
 	
 	TODO:
 	- Do better instruction parsing. Not every command needs r2 or eapi.
 	
 	- Have some command to view internal data structure that we manage and be
 	  able to edit them?
-	
-	- Build a configuration for each API (stack arguments, return values, etc)
+
+	- continue making API defs
 	
 	- add hooks for memory read/write/execute 
 	
 	- test out revolver-style task calling
+
+	- Figure out which instructions radare2 can't emulate and emulate them
+	  - cpuid, bt, cdq
 	
-	- PEB/TEB at offset 0x30 fs:0x30 fs is fucked so esil just accesses 0x30
-	  what about the other segments like gs? on 64-bit
-	  o load kernel32 and ntdll 32 and create a PEB
-	 
-	- SEH, fs:[0]. How the hell to detect exceptions?
-	
-	- Kill r2 session. Start r2 session in script.
+	- SEH, fs:[0]. How the hell to detect exceptions? Can't without extensive analysis
+
+	- add breakpoints?
 
 '''
 
+import psutil
 import readline
 import r2pipe
-import random
+import pefile
 import sys
-import time
-import os
-#import pefile
 
 
 class ApiEmu:
@@ -56,6 +53,16 @@ class ApiEmu:
 
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
+	]
+
+	susp_api = [
+		'ShellExecuteA', 'ShellExecuteW',
+		'AdjustTokenPriveleges',
+		'CheckRemoteDebuggerPresent',
+		'OleGetClipboard',
+		'GetCommandLineA', 'GetCommandLineW',
+		'TlsGetValue',
+		'IsDebuggerPresent',
 	]
 	
 	def __init__(self):
@@ -77,7 +84,6 @@ class ApiEmu:
 			'OpenProcess'              : self._OpenProcess,
 			'CloseHandle'              : self._CloseHandle,
 			'GetModuleFileNameExW'     : self._GetModuleFileNameExW,
-			'GetModuleFileNameA'	   : self._GetModuleFileNameA,
 			'OpenSCManagerW'           : self._OpenSCManagerW,
 			'EnumServiceStatusW'       : self._EnumServiceStatusW,
 			'CloseServiceHandle'       : self._CloseServiceHandle,
@@ -86,17 +92,20 @@ class ApiEmu:
 			'_snwprintf'               : self.__snwprintf,
 			'memset'                   : self._memset,
 			'wcslen'                   : self._wcslen,
-           		'GetSystemTimeAsFileTime'  : self._GetSystemTimeAsFileTime,
-            		'GetCurrentProcessId'      : self._GetCurrentProcessId,
-		        'GetCurrentThreadId'       : self._GetCurrentThreadId,
-        		'GetTickCount'             : self._GetTickCount,
-        		'QueryPerformanceCounter'  : self._QueryPerformanceCounter,
-			'LoadLibraryA'		   : self._LoadLibraryA,
-			'GetProcAddress'	   : self._GetProcAddress,
-			'SetErrorMode'		   : self._SetErrorMode,
-			'GetCurrentDirectoryA'	   : self._GetCurrentDirectoryA,
-			'TlsGetValue'		   : self._TlsGetValue,
-			'GlobalUnfix'		   : self._GlobalUnfix,
+			'GetSystemTimeAsFileTime'  : self._GetSystemTimeAsFileTime,
+			'GetCurrentProcessId'      : self._GetCurrentProcessId,
+			'GetCurrentThreadId'       : self._GetCurrentThreadId,
+			'GetTickCount'             : self._GetTickCount,
+			'QueryPerformanceCounter'  : self._QueryPerformanceCounter,
+			'LoadLibraryA'             : self._LoadLibraryA,
+			'GetProcAddress'           : self._GetProcAddress,
+			'SetErrorMode'             : self._SetErrorMode,
+			'GetModuleFileNameA'       : self._GetModuleFileNameA,
+			'GetCurrentDirectoryA'     : self._GetCurrentDirectoryA,
+			'GetComputerNameA'         : self._GetComputerNameA,
+			'GetFileAttributesA'       : self._GetFileAttributesA,
+			'TlsGetValue'              : self._TlsGetValue,
+			'GlobalUnfix'              : self._GlobalUnfix,
 		}
 		
 	def _DiamondDefault(self, r2):
@@ -109,11 +118,7 @@ class ApiEmu:
 	def _GetProcessHeap(self, r2):
 		print "! GetProcessHeap #TODO"
 	def _HeapAlloc(self, r2):
-		print "! HeapAlloc"
-		r2.cmd("ar esp=esp+12")
-		r2.cmd("ar eax=1")
-		return
-
+		print "! HeapAlloc #TODO"
 	def _HeapFree(self, r2):
 		print "! HeapFree #TODO"
 	def _StrCmpNI(self, r2):
@@ -138,6 +143,65 @@ class ApiEmu:
 		print "! memset #TODO"
 	def _wcslen(self, r2):
 		print "! wcslen #TODO"
+	
+	def _GetFileAttributesA(self, r2):
+		print "! GetFileAttributesA"
+		print "  > ARG: '" + r2.cmd('ps @ [esp]') + "'"
+		r2.cmd('ar esp=esp+4')
+		r2.cmd('ar eax=0x80') # return FILE_ATTRIBUTE_NORMAL by default
+	
+	def _GetComputerNameA(self, r2):
+		print "! GetComputerNameA"
+		cname = r"DESKTOP-570DAJQ"
+		print "  > Using dummy data: " + cname
+		loc = r2.cmdj('pxwj 4 @ esp')
+		r2.cmd('wz ' + cname + ' @ ' + hex(loc[0]))
+		r2.cmd('ar esp=esp+8')
+		r2.cmd('ar eax=1')
+	
+	def _GetCurrentDirectoryA(self, r2):
+		print "! GetCurrentDirectoryA"
+		dummy = r"C:\\Users\\Dummy\\Desktop"
+		print "  > Using dummy data: " + dummy
+		loc   = r2.cmdj('pxwj 4 @ esp+4')
+		r2.cmd('wz ' + dummy + ' @ ' + hex(loc[0]))
+		r2.cmd('ar esp=esp+8')
+		r2.cmd('ar eax=' + hex(len(dummy) - 4))
+	
+	def _GetModuleFileNameA(self, r2):
+		print "! GetModuleFileNameA"
+		dummy = r"C:\\Users\\Dummy\\Desktop\\dumb.exe"
+		print "  > Using dummy data: " + dummy
+		loc   = r2.cmdj('pxwj 4 @ esp+4')
+		r2.cmd('wz ' + dummy + ' @ ' + hex(loc[0]))
+		r2.cmd('ar esp=esp+12')
+		r2.cmd('ar eax=' + hex(len(dummy) - 5))
+	
+	def _SetErrorMode(self, r2):
+		print "! SetErrorMode"
+		r2.cmd('ar esp=esp+4')
+		r2.cmd('ar eax=1')
+	
+	def _GetProcAddress(self, r2):
+		print "! GetProcAddress"
+		API = r2.cmd('ps @ [esp+4]')
+		print "  > ARG: '" + API + "'"
+		r2.cmd('ar esp=esp+8')
+
+		# get rid of the try-catch
+		for sym in SYMBOLS:
+			try:
+				if SYMBOLS[sym] == self.SYMBOLS[API]:
+					r2.cmd('ar eax=' + hex(sym))
+					break
+			except KeyError:
+				pass
+	
+	def _LoadLibraryA(self, r2):
+		print "! LoadLibraryA #TODO"
+		print "  > ARG: '" + r2.cmd('ps @ [esp]') + "'"
+		r2.cmd('ar esp=esp+4')
+		r2.cmd('ar eax=0x77FD0000')
 		
 	def _RegOpenKeyExW(self, r2):
 		print "! RegOpenKeyExW"
@@ -150,8 +214,6 @@ class ApiEmu:
 		print "  > ARG: '" + strarg + "'"
 		
 		r2.cmd('ar eax=0')
-		
-		return
 	
 	def _RegCloseKey(self, r2):
 		print "! RegCloseKey"
@@ -214,70 +276,91 @@ class ApiEmu:
 		r2.cmd('wv 0x4 @ [esp+8]')
 		r2.cmd('ar esp=esp+12')
 		r2.cmd('ar eax=1')
-
-	def _LoadLibraryA(self, r2):
-		print "! LoadLibrary"
-		r2.cmd("ar esp=esp+4")
-		r2.cmd("ar eax=1")
-		return
-
-	def _GetProcAddress(self, r2):
-		print "! GetProcAddress"
-		r2.cmd("ar esp=esp+8")
-		r2.cmd("ar eax=1")
-		return
-
-	def _SetErrorMode(self, r2):
-		print "! SetErrorMode"
-		r2.cmd("ar esp=esp+4")
-		r2.cmd("ar eax=1")
-		return
-
-	def _GetModuleFileNameA(self, r2):
-		print "! GetModuleFileNameA"
-		r2.cmd("ar esp=esp+12")
-		r2.cmd("ar eax=1")
-		return
-
-	def _GetCurrentDirectoryA(self, r2):
-		print "! GetCurrentDirectoryA"
-		r2.cmd("ar esp=esp+8")
-		r2.cmd("ar eax=1")
-		return
-
+	
 	def _TlsGetValue(self, r2):
 		print "! TlsGetValue"
 		r2.cmd('ar esp=esp+4')
 		r2.cmd('ar eax=1')
-		return
-
+	
 	def _GlobalUnfix(self, r2):
 		print "! GlobalUnfix"
 		r2.cmd('ar esp=esp+4')
 		r2.cmd('ar eax=1')
-		return
 
 #   COMMAND FUNCTIONS
 ###################################################################################
-def Build_TEB_PEB(r2, eapi=None):
-	
+def BuildInMemoryModules(r2, eapi=None, args=None):
 	EBP = r2.cmd('ar ebp')
 	ESP = r2.cmd('ar esp')
+
+	# init TIB
+	r2.cmd('aeim 0x0 0x1000')
+	# write PEB pointer
+	r2.cmd('wv 0x100 @ 0x30')
+	# write Ldr pointer
+	r2.cmd('wv 0x200 @ 0x10C')
+	# write InMemoryOrderModuleList
+	r2.cmd('wv 0x300 @ 0x214')
+	# write ntdll node
+	r2.cmd('wv 0x400 @ 0x300')
+	# write kernel32 node
+	r2.cmd('wv 0x500 @ 0x400')
+	# write kernel32 base
+	r2.cmd('wv 0x74FF0000 @ 0x510')
+
+	k32 = pefile.PE('./DLLS/_kernel32.dll')
+
+	base = 0x74FF0000
+
+	ExpDirRVA = k32.OPTIONAL_HEADER.DATA_DIRECTORY[0].VirtualAddress
+	ExpDir    = base + ExpDirRVA
+
+	NumberOfFunctions     = k32.DIRECTORY_ENTRY_EXPORT.struct.NumberOfFunctions
+	AddressOfNames        = base + k32.DIRECTORY_ENTRY_EXPORT.struct.AddressOfNames
+	AddressOfFunctions    = base + k32.DIRECTORY_ENTRY_EXPORT.struct.AddressOfFunctions
+	AddressOfNameOrdinals = base + k32.DIRECTORY_ENTRY_EXPORT.struct.AddressOfNameOrdinals
+	NameRVA               = 0x100000
+	NamesTable            = base + NameRVA
+
+	r2.cmd('aeim ' + hex(base) + ' 0x1000')
+
+	r2.cmd('aeim ' + hex(AddressOfNameOrdinals) + ' ' + hex(NumberOfFunctions * 2))
+	r2.cmd('aeim ' + hex(AddressOfFunctions)    + ' ' + hex(NumberOfFunctions * 4))
+	r2.cmd('aeim ' + hex(AddressOfNames)        + ' ' + hex(NumberOfFunctions * 4))
+	r2.cmd('aeim ' + hex(NamesTable)            + ' ' + '0x30000')
+	r2.cmd('aeim ' + hex(ExpDir)                + ' ' + '0x28')
+
+	r2.cmd('yf 4096 0x0 DLLS/_kernel32.dll')
+	r2.cmd('yy 0x74FF0000')
+	r2.cmd('yf 40 ' + hex(k32.get_offset_from_rva(ExpDirRVA)) + ' DLLS/_kernel32.dll')
+	r2.cmd('yy '    + hex(ExpDir))
 	
-	r2.cmd('aeim 0x0 0x40')      # for fs:[0x30] or fs:[0]
-	r2.cmd('aeim 0x1000 0x1000') # for PEB
-	
-	# use wv to write addresses
-	r2.cmd('wv 0x1000 @ 0x30')
-	f
-	# TODO: finish inner PEB structures
-	# TODO: map kernel32 + ntdll + kernelbase.
+	print "! Mapping Exports"
+	i = 0
+	# fix the -3 ordinal adjustment.
+	for exp in k32.DIRECTORY_ENTRY_EXPORT.symbols:
+		r2.cmd('wv2 ' + str(exp.ordinal - 3) + ' @ ' + hex(AddressOfNameOrdinals + (i * 2))) 
+		r2.cmd('wv4 ' + hex(exp.address) + ' @ ' + hex(AddressOfFunctions    + (i * 4)))
+		r2.cmd('wv4 ' + hex(NameRVA)     + ' @ ' + hex(AddressOfNames        + (i * 4)))
+		r2.cmd('wz '  + exp.name         + ' @ ' + hex(NamesTable))
+
+		if exp.name in eapi.SYMBOLS:
+			SYMBOLS[exp.address + base] = eapi.SYMBOLS[exp.name]
+
+		namelen     = len(exp.name) + 1
+		NamesTable += namelen
+		NameRVA    += namelen
+		i += 1
+
+	r2.cmd('.ar-')
+	r2.cmd('ar ebp=' + EBP)
+	r2.cmd('ar esp=' + ESP)
 	
 	return
 
 SYMBOLS = { }
 
-def BuildSymbols(r2, eapi, dummy0=None):
+def BuildSymbols(r2, eapi, args=None):
 	for symbol in r2.cmdj('isj'):
 		content = r2.cmdj('pxrj 4 @ ' + hex(symbol['vaddr']))
 		for i, API in enumerate(eapi.SYMBOLS):
@@ -292,224 +375,201 @@ def BuildSymbols(r2, eapi, dummy0=None):
 	
 	#usageloc = r2.cmdj('axtj @ sym.' + someapi)
 
-def InitEmu(r2, eapi=None, dummy0=None, BITS=32, ARCH='x86'):
-	# Actual init stuff
-	r2.cmd('e anal.bb.maxsize=16384')
-	r2.cmd('aaaa')
-	r2.cmd('e io.cache=true')
-	r2.cmd('e asm.bits=' + str(BITS))
-	r2.cmd('e asm.arch=' + ARCH)
-	r2.cmd('e asm.emu=true')
-	r2.cmd('aei')
-	r2.cmd('aeip')
-	r2.cmd('aeim 0xFFFFD000 0x32000 stack')
-	# Cause we always run symb anyway
-	BuildSymbols(r2, eapi)
+def InitEmu(r2, eapi=None, args=None):
+	BITS ='32'
+	ARCH ='x86'
 
-	# Make sure cont doesn't skip the first instruction!
-	# Don't need breaks cause we're not in a loop
-	# Don't want any seeking ('aes', 's eip') so cont works properly 
-	addr = int(r2.cmd('s'), 0)
-	
-	if addr in SYMBOLS:
-		r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
-		SYMBOLS[addr](r2)
-	
-	insn = r2.cmdj('aoj @ eip')
-	
-	if insn[0]['mnemonic'] in IHOOKS:
-		IHOOKS[insn[0]['mnemonic']](r2, insn, eapi)
+	# > init a e b
+	for arg in args:
+		if arg == 'a':
+			r2.cmd('aaaa')
+		elif arg == 'e':
+			r2.cmd('e io.cache=true')
+			r2.cmd('e asm.bits=' + BITS)
+			r2.cmd('e asm.arch=' + ARCH)
+			r2.cmd('e asm.emu=true')
+			r2.cmd('aei')
+			r2.cmd('aeip')
+			r2.cmd('aeim 0x60C000 0x32000 stack')
+		elif arg == 'b':
+			BuildSymbols(r2, eapi)
 
-
-def Continue(r2, eapi=None, args=None):
-	count = 1
+def Continue(r2, eapi, args=None):
+	count     = 1
+	stepcount = sys.maxsize
+	
 	if args:
-		try:
-			count = int(args[0])
-		except ValueError:
-			print "Invalid argument"
-			return
-	while count > 0:	
-		while True:
-			# Found a bit of a subtle bug here.
-			# If the very first instruction should be hooked
-			# it would've been skipped by the aes command
-			# before we could analyze it.
-			r2.cmd('aes')
+		if isinstance(args, list):
+			try:
+				count = int(args[0])
+				print '! Continuing', args[0], 'times'
+			except ValueError:
+				print '! INVALID ARGUMENT'
+				return
+		else:
+			stepcount = args
+	
+	while count > 0:
+		while stepcount:
 			addr = int(r2.cmd('s'), 0)
-		
+			
 			if addr in SYMBOLS:
 				r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
 				SYMBOLS[addr](r2)
+				eapi.ret_stk.pop() # API emulations pop their own return addr
 				break
-		
+			
 			insn = r2.cmdj('aoj @ eip')
-		
+
 			if insn[0]['mnemonic'] in IHOOKS:
 				ret = IHOOKS[insn[0]['mnemonic']](r2, insn, eapi)
 				if ret == 1:
 					break
 
 			for op in insn[0]['opex']['operands']:
-			    if 'disp' and 'segment' in op and op['segment'] == 'fs':
-				print "! FS:0 detected. Adjust manually before continuing."
-				r2.cmd('s eip')
-				break # Used to be return
+				if 'disp' and 'segment' in op and op['segment'] == 'fs':
+					print "! FS:0 detected. Adjust manually before continuing."
+					r2.cmd('aes; s eip')
+					return
+
+			r2.cmd('aes')
+			stepcount -= 1
+
 		count -= 1
 		r2.cmd('s eip')
 
+def Step(r2, eapi=None, args=None):
+	if args:
+		try:
+			count = int(args[0])
+		except ValueError:
+			print "! INVALID ARGUMENT"
+			return
+	else:
+		count = 1
+
+	Continue(r2, eapi, count)
+
+def Stop(r2, eapi=None, args=None):
+	r2.cmd('-ar* ; ar0 ; aeim- ; aei-;')
+	r2.quit()
+
+	for proc in psutil.process_iter():
+		if proc.name() == 'r2':
+			proc.terminate()
+	
+	exit(0)
+
 def Api(r2, eapi=None, args=None):
-	BadAPIs = {"ShellExecuteA", "AdjustTokenPrivileges", 
-		   "CheckRemoteDebuggerPresent", "OleGetClipboard", 
-		   "GetCommandLineA", "TlsGetValue", 
-		   "Swaggertester", "IsDebuggerPresent"}
-
 	for symbol in r2.cmdj('isj'):
-		for APIs in BadAPIs:	
-			if APIs in symbol['flagname']:			
-				print APIs
+		for API in ApiEmu.susp_api:
+			if API in symbol['flagname']:
+				print "!", API
 
-def Str(r2, eapi=None, args=None):
-	print "Hello."	
+def String(r2, eapi=None, args=None):
+	with open(args[0].strip('"')) as f:
+		content = f.readlines()
 	
-	r2 = r2pipe.open("/home/liam/Desktop/e67aa9da71042fe85d03b7f57c18e611d3d16167ca9f86615088f2fd98b17a99copy")
-	filename = "/home/liam/list.txt";
+	for index in xrange(len(content)):
+		res = r2.cmdj('/j ' + content[index] + ' 2> /dev/null') # /dev/null is linux specific
+		if res:
+			print "!", content[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+		else:
+			print "!", content[index], "NOT FOUND"
+	
+	for index in xrange(len(content)):
+		b64 = base64.b64encode(content[index])
+		res = r2.cmdj('/j ' + b64 + ' 2> /dev/null')
+		if res:
+			print "! Base64", content[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+		else:
+			print "! Base64", content[index], "NOT FOUND"
 
-
-	print ("STRING ENCODE SEARCH")
-	print ("--------------------")
-	with open(filename) as f:
-		content = f.read().splitlines()
-		for index in range(len(content)):	
-			cmd = r2.cmdj("/j " + content[index]+ " 2> /dev/null")
-			if cmd:
-				addr= str(hex(cmd[0]["offset"]))
-				string= str(cmd[0]["data"])
-				print ("FOUND: "+ content[index]+ " in " + string + " was found at " + addr)
-			if not cmd:
-				print (content[index] + " WAS NOT FOUND.")
-
-	print (" ")
-	print ("BASE64 ENCODE SEARCH")
-	print ("--------------------")
-	with open(filename) as f:
-		content = f.read().splitlines()
-		for index in range(len(content)):
-			base64Encode = base64.b64encode(content[index])
-			cmd = r2.cmdj("/j " + base64Encode + " 2> /dev/null")
-			if cmd:
-				addr= str(hex(cmd[0]["offset"]))
-				string= str(cmd[0]["data"])
-				print ("FOUND: "+ content[index]+ "["+base64Encode +"]"+ " in " + string + " was found at " + addr)
-			if not cmd:
-				print (content[index]+ "["+base64Encode +"]" + " WAS NOT FOUND.")
-
-
-def Help(dummy0=None, dummy1=None, dummy2=None):
+def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
-	init - Initializes ESIL VM
-	symb - Builds list of imports links known ones to our emulated API's
-	cont - Continue Emulation
-	api  - Get a list of Suspicious APIs in the malware.
-	str  - Searches malware for malisious looking strings.
-	stop - Exit and stop r2
-	help - Display this help"""
+	init [aeb] - Initializes ESIL VM
+	             a = analyze, e = emulation, b = symbols (separate with spaces)
+	symb       - Builds list of imports links known ones to our emulated API's
+	loadmod    - Builds mock TIB/PEB and loads kernel32.dll export info 
+	api        - Get a list of Suspicious APIs in the malware
+	string [x] - Searches malware for suspicious looking strings
+	             x = filename/path in double-quotes
+	cont [x]   - Continue Emulation
+	             x = number of times to continue (default=1)
+	step [x]   - Analyzed Step
+	             x = number of times to step (default=1)
+	stop       - Exit and kill r2
+	help       - Display this help"""
 	print HELP
-	
 
 COMMANDS = {
-	'symb': BuildSymbols,
-	'init': InitEmu,
-	'cont': Continue,
-	'api': Api,
-	'string': Str,
-	'help': Help,
+	'init'   : InitEmu,
+	'symb'   : BuildSymbols,
+	'loadmod': BuildInMemoryModules,
+	'api'    : Api,
+	'string' : String,
+	'cont'   : Continue,
+	'step'   : Step,
+	'stop'   : Stop,
+	'help'   : Help,
 }
 
 #   INSTRUCTION HOOK CALLBACKS
+#
+#   The last thing each hook should do is single step
 ###################################################################################
 def HOOK_CALL(r2, insn, eapi):
-	if 'jump' in insn[0]:
-		r2.cmd('s eip') # Might need this for an annoying bug...
-		print "! CALL " + hex(insn[0]['jump'])
-		
-		# When a call is made add the expected return value to the stack
-		expected_ret_val = hex(r2.cmdj('aoj 2')[-1]['addr'])
-		print "! EXPECTED RETURN " + expected_ret_val
-		if not r2.cmdj('pdfj @ ' + hex(insn[0]['jump'])):
-			print "! INVALID FUNCTION CALL"
-		eapi.ret_stk.append(expected_ret_val)
-
-	# Turns out there are other kinds of calls that aren't being properly checked
-	# Stuff like call dword [0x41f004] for instance
-	if 'ptr' in insn[0]:
-		if int(insn[0]['ptr']) in SYMBOLS:
-			return 1
-
-		r2.cmd('s eip') # Might need this for an annoying bug...
-		print "! CALL " + hex(insn[0]['ptr'])
-		
-		# When a call is made add the expected return value to the stack
-		expected_ret_val = hex(r2.cmdj('aoj 2')[-1]['addr'])
-		print "! EXPECTED RETURN " + expected_ret_val
-		if not r2.cmdj('pdfj @ ' + hex(insn[0]['ptr'])):
-			print "! INVALID FUNCTION CALL"
-		else:
-			eapi.ret_stk.append(expected_ret_val)
-
-	if 'reg' in insn[0]:
-		r2.cmd('s eip') # Might need this for an annoying bug...
-		print "! CALL " + r2.cmd('ar ' + insn[0]['reg'])
-		
-		# When a call is made add the expected return value to the stack
-		expected_ret_val = hex(r2.cmdj('aoj 2')[-1]['addr'])
-		print "! EXPECTED RETURN " + expected_ret_val
-		if not r2.cmdj('pdfj @ ' + r2.cmd('ar ' + insn[0]['reg'])):
-			print "! INVALID FUNCTION CALL"
-		else:
-			eapi.ret_stk.append(expected_ret_val)
-	
-		
+	# don't care what kind of call.
+	expected_ret_val = hex(insn[0]['addr'] + insn[0]['size'])
+	eapi.ret_stk.append(expected_ret_val)
+	print "! EXPECTED RETURN: " + expected_ret_val
+	r2.cmd('s eip')
+	print r2.cmd('pd 1')
+	r2.cmd('aes')
 	return 1
+
 def HOOK_RET(r2, insn, eapi):
-	ret_val = hex(r2.cmdj('pxwj @ esp')[0]) # This is the actual return value
+	ret_val = hex(r2.cmdj('pxwj @ esp')[0])
 	print "! RET " + ret_val
-	# Check for expected return addresses, if there aren't any then
-	# we hit a RET instruction without a CALL instruction
 	if eapi.ret_stk:
 		expected_ret_val = eapi.ret_stk.pop()
 		if expected_ret_val != ret_val:
 			print "! UNEXPECTED RETURN (LIKELY STACK MANIPULATION)"
-			print "EXPECTED: " + expected_ret_val
-			print "ACTUAL: " + ret_val
+			print "  > EXPECTED: " + expected_ret_val
+			print "  > ACTUAL  : " + ret_val
 		else:
 			print "! VALID RETURN"
-	else:
-		print "! UNEXPECTED RETURN (RET WITHOUT CALL)"
-	return 1
-
-def HOOK_CPUID(r2, insn, eapi):
-	eax_val = int(r2.cmd("ar eax"), 16) # Get value of EAX before CPUID call
-	if eax_val == 1:
-		print "! CPUID RUN WHILE EAX == 1"
-		r2.cmd("aes")
-		ecx_val = int(r2.cmd("ar ecx"), 16) # Get value of ECX after CPUID call, this could cause bugs like cont missing an instruction...
-		eapi.CONTEXT['CPUID'] = {'eax': eax_val, 'ecx': ecx_val}
+	r2.cmd('aes')
 	return 1
 
 def HOOK_BT(r2, insn, eapi):
-	ecx_val = int(r2.cmd("ar ecx"), 16)
+	ecx_val = int(r2.cmd('ar ecx'), 0)
 	if ecx_val == eapi.CONTEXT['CPUID']['ecx']:
 		print "! ECX UNCHANGED SINCE LAST CPUID CALL"
-		btInstrDetails = r2.cmdj("aoj @ eip")[0]
+		btInstrDetails = r2.cmdj('aoj @ eip')[0]
 		if (
-			btInstrDetails["opex"]["operands"][0]["type"] == "reg" and 
-			btInstrDetails["opex"]["operands"][0]["value"] == "ecx" and
-			btInstrDetails["opex"]["operands"][1]["type"] == "imm" and
-			btInstrDetails["opex"]["operands"][1]["value"] == 31
+			btInstrDetails['opex']['operands'][0]['type']  == 'reg' and
+			btInstrDetails['opex']['operands'][0]['value'] == 'ecx' and
+			btInstrDetails['opex']['operands'][1]['type']  == 'imm' and
+			btInstrDetails['opex']['operands'][1]['value'] == 31
 		):
-			print "! 31ST BIT OF ECX BEING CHECKED"
+			print "! 31st bit of ECX being checked"
 			print "! VM DETECTION CODE FOUND"
+	r2.cmd('aes')
+	return 1
+
+def HOOK_CPUID(r2, insn, eapi):
+	eax_val = int(r2.cmd('ar eax'), 0)
+	if eax_val == 1:
+		print "! CPUID RUN WHERE EAX = 1"
+		r2.cmd('aes')
+		ecx_val = int(r2.cmd('ar ecx'), 0)
+		eapi.CONTEXT['CPUID'] = {
+			'eax': eax_val,
+			'ecx': ecx_val,
+		}
+	else:
+		r2.cmd('aes')
 	return 1
 
 IHOOKS = {
@@ -517,43 +577,30 @@ IHOOKS = {
 	'ret'  : HOOK_RET,
 	'cpuid': HOOK_CPUID,
 	'bt'   : HOOK_BT,
+	#'cdq'  : HOOK_CDQ,
 }
 
 #   MAIN
 ###################################################################################
 def main():
-	
-	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -qc=h ~/Desktop/e67aa9da71042fe85d03b7f57c18e611d3d16167ca9f86615088f2fd98b17a99copy\" '")
-		
-	time.sleep(1);
-	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
 	eapi = ApiEmu()
-	bro = random.choice(['Bruh', 'Bro', 'Breh', 'Brah', 'Broseph', 'Brocahontas', 'Brometheous'])
-	print r2.cmd('?E ' + bro)
+	
+	print r2.cmd('?E Bruh')
 	print "Enter help for a list of commands."
 
 	while True:
-		try:
-			commandAndArgs    = raw_input('[' + r2.cmd('s') + ']> ')
-		except EOFError:
-			print '[' + r2.cmd('s') + ']> '
-			commandAndArgs    = sys.stdin.readline()
-		commandAndArgsArr = commandAndArgs.split()
-		command           = commandAndArgsArr[0]
-		args = []		
-		if len(commandAndArgsArr) > 1:
-			args      = commandAndArgsArr[1:]
-
-		if command == "stop":
-			r2.cmd('-ar* ; ar0 ; aeim- ; aei-;')
-			r2.quit() # doesn't always quit for some reason. Use pkill r2.
-			break
+		command = raw_input('[' + r2.cmd('s') + ']> ')
 		
-		if command in COMMANDS:
-			COMMANDS[command](r2, eapi, args) # do better instruction parsing
+		if not command:
+			continue
+
+		scommand = command.split()
+
+		if scommand[0] in COMMANDS:
+			COMMANDS[scommand[0]](r2, eapi, scommand[1:])
 		else:
-			print r2.cmd(commandAndArgs)
+			print r2.cmd(command)
 
 
 	
