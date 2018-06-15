@@ -1,15 +1,4 @@
 '''
-	Steps:
-	
-	- In one terminal do:
-	$ r2 -qc=h program.exe
-	
-	This starts r2 on a local webserver
-	
-	- In another terminal do:
-	$ python diamondfountain.py
-	
-	This connects to r2 on local webserver
 
 	*Visual Mode not supported.
 	*Certain r2 commands won't work
@@ -44,6 +33,8 @@ import psutil
 import readline
 import r2pipe
 import pefile
+import os
+import time
 import sys
 import base64
 
@@ -54,6 +45,15 @@ class ApiEmu:
 
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
+	]
+	
+	susp_string = [
+		"http", "00:05:69", "v",
+		"00:0C:29", "00:1C:14", 
+		"00:50:56", "08:00:27", 
+		"Vmtoolsd", "Vmwaretrat",
+		"Vmwareuser","Vmacthlp", "vboxservice"
+		"vboxtray","vm3dgl.dll","vmdum.dll","vm3dver.dll"
 	]
 
 	susp_api = [
@@ -468,23 +468,22 @@ def Api(r2, eapi=None, args=None):
 				print "!", API
 
 def String(r2, eapi=None, args=None):
-	with open(args[0].strip('"')) as f:
-		content = f.readlines()
 	
-	for index in xrange(len(content)):
-		res = r2.cmdj('/j ' + content[index] + ' 2> /dev/null') # /dev/null is linux specific
+	for index in xrange(len(ApiEmu.susp_string)):
+		res = r2.cmdj('/j ' + ApiEmu.susp_string[index] ) # /dev/null is linux specific
+		
 		if res:
-			print "!", content[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+			print "!", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
 		else:
-			print "!", content[index], "NOT FOUND"
+			print "!", ApiEmu.susp_string[index], "NOT FOUND"
 	
-	for index in xrange(len(content)):
-		b64 = base64.b64encode(content[index])
-		res = r2.cmdj('/j ' + b64 + ' 2> /dev/null')
+	for index in xrange(len(ApiEmu.susp_string)):
+		b64 = base64.b64encode(ApiEmu.susp_string[index])
+		res = r2.cmdj('/j ' + b64)
 		if res:
-			print "! Base64", content[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+			print "! Base64", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
 		else:
-			print "! Base64", content[index], "NOT FOUND"
+			print "! Base64", ApiEmu.susp_string[index], "NOT FOUND"
 
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
@@ -583,7 +582,13 @@ IHOOKS = {
 
 #   MAIN
 ###################################################################################
-def main():
+def main(argv):
+	print argv
+	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -qc=h "+ argv[0] +"\" '")
+
+
+	time.sleep(1)	
+	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
 	eapi = ApiEmu()
 	
@@ -606,4 +611,4 @@ def main():
 
 	
 if __name__ == '__main__':
-	main()
+	main(sys.argv[1:])
