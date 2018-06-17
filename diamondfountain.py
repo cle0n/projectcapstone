@@ -107,6 +107,7 @@ class ApiEmu:
 			'GetFileAttributesA'       : self._GetFileAttributesA,
 			'TlsGetValue'              : self._TlsGetValue,
 			'GlobalUnfix'              : self._GlobalUnfix,
+			'IsDebuggerPresent'	   : self._IsDebuggerPresent,
 		}
 		
 	def _DiamondDefault(self, r2):
@@ -114,6 +115,22 @@ class ApiEmu:
 		print r2.cmd('pd 1')
 		return
 
+	def _IsDebuggerPresent(self, r2):
+		print "! IsDebuggerPresent"
+		answer = raw_input("Would you like to remove this API call? (y or n)")
+		type(answer)
+		
+		while True:
+			if answer in ['y', 'Y', 'yes', 'Yes', 'YES']:
+   				print("Getting rid of IsDebuggerPresent.")
+				r2.cmd('wa \"mov eax, 0\" ')
+			
+			elif answer in ['n', 'N', 'no', 'No', 'NO']:		
+				break;
+			else:
+				print "Invalid answer."
+
+		
 	def _GetAdaptersAddresses(self, r2):
 		print "! GetAdaptersAddresses #TODO"
 	def _GetProcessHeap(self, r2):
@@ -468,22 +485,22 @@ def Api(r2, eapi=None, args=None):
 				print "!", API
 
 def String(r2, eapi=None, args=None):
-	
+	#Can't display mutiple finds.
 	for index in xrange(len(ApiEmu.susp_string)):
-		res = r2.cmdj('/j ' + ApiEmu.susp_string[index] ) # /dev/null is linux specific
+		res = r2.cmdj('/j ' + ApiEmu.susp_string[index] )
 		
 		if res:
-			print "!", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
 		else:
-			print "!", ApiEmu.susp_string[index], "NOT FOUND"
-	
+			print "! NOT FOUND ", ApiEmu.susp_string[index]
+
 	for index in xrange(len(ApiEmu.susp_string)):
 		b64 = base64.b64encode(ApiEmu.susp_string[index])
 		res = r2.cmdj('/j ' + b64)
 		if res:
-			print "! Base64", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+			print "! Base64 FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
 		else:
-			print "! Base64", ApiEmu.susp_string[index], "NOT FOUND"
+			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
 
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
@@ -583,9 +600,8 @@ IHOOKS = {
 #   MAIN
 ###################################################################################
 def main(argv):
-	print argv
-	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -qc=h "+ argv[0] +"\" '")
 
+	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -Aw -qc=h "+ argv[0] +"\" '")
 
 	time.sleep(1)	
 	
