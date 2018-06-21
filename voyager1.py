@@ -27,6 +27,7 @@ class Voyager:
 		self.bbs      = r2.cmdj('afbj')
 
 		self.pathlist = []
+		self.looplist = []
 		self.path     = 0
 		self.node     = 0
 
@@ -35,6 +36,14 @@ class Voyager:
 		for pathindex, path in enumerate(self.pathlist):
 			print "PATH: %d" % (pathindex)
 			for node in path:
+				print str(hex(node))
+			print ""
+
+	def ViewLoops(self):
+		print ""
+		for loopindex, loop in enumerate(self.looplist):
+			print "LOOP: %d" % (loopindex)
+			for node in loop:
 				print str(hex(node))
 			print ""
 
@@ -87,15 +96,37 @@ class Voyager:
 	'''
 	def PathFinder(self, path, addr, depth=None):
 
+		divergedFromLastLoop = True # Technically don't need this, but just to be safe
+
 		todo = []
+		loop = []
 
 		todo.append(addr)
 
 		while todo:
 			node = todo.pop()
+# This is where loop detection happens
+# I have to keep track of the first time any node reappears in the path, look back in the path array until it appears again, and take note of that loop
+# Then, stop keeping track of loops until the current node diverges from the loop that was just found, to avoid duplicate loops and extra work
 
-			if node in path:
+			if node in path:  
+				#print "Node in path!"
+
+				if not self.looplist or node not in self.looplist[-1]:
+					divergedFromLastLoop = True
+
+				if divergedFromLastLoop:
+					i = -1					
+					while path[i] != node:
+						loop.insert(0, path[i])
+						i -= 1
+					loop.insert(0, node)
+					self.looplist.append(loop)
+					loop = []
+					divergedFromLastLoop = False
+
 				path.append(node)
+
 				continue
 
 			path.append(node)
