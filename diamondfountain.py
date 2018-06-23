@@ -510,6 +510,10 @@ def String(r2, eapi=None, args=None):
 			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
 
 def PathFind(r2=None, eapi=None, args=None):
+	paths = r2.cmdj('afbj')
+	if not paths:
+		r2.cmd('f 1 @ ' + r2.cmd('s'))
+		r2.cmd('af 1')
 	#line = r2.cmdj("pdbj")[0]['offset']
 	#print eapi.voy.bbs[0]['addr']
 	#print "BBS Before"
