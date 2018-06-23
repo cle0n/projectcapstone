@@ -29,6 +29,7 @@
 
 '''
 
+import subprocess
 import psutil
 import readline
 import r2pipe
@@ -39,6 +40,7 @@ import sys
 import base64
 from voyager1 import Voyager
 
+FNULL = open(os.devnull, 'w')
 
 class ApiEmu:
 	ret_stk = []
@@ -402,6 +404,7 @@ def InitEmu(r2, eapi=None, args=None):
 	for arg in args:
 		if arg == 'a':
 			r2.cmd('aaaa')
+			eapi.voy = Voyager(r2)
 		elif arg == 'e':
 			r2.cmd('e io.cache=true')
 			r2.cmd('e asm.bits=' + BITS)
@@ -412,7 +415,6 @@ def InitEmu(r2, eapi=None, args=None):
 			r2.cmd('aeim 0x60C000 0x32000 stack')
 		elif arg == 'b':
 			BuildSymbols(r2, eapi)
-	eapi.voy = Voyager(r2)
 	
 
 def Continue(r2, eapi, args=None):
@@ -475,6 +477,8 @@ def Stop(r2, eapi=None, args=None):
 	r2.cmd('-ar* ; ar0 ; aeim- ; aei-;')
 	r2.quit()
 
+	FNULL.close()
+
 	for proc in psutil.process_iter():
 		if proc.name() == 'r2':
 			proc.terminate()
@@ -529,6 +533,9 @@ def Help(r2=None, eapi=None, args=None):
 	symb       - Builds list of imports links known ones to our emulated API's
 	loadmod    - Builds mock TIB/PEB and loads kernel32.dll export info 
 	api        - Get a list of Suspicious APIs in the malware
+	pathfind   - Examines a function and maps out all possible paths
+	loops      - Examines a function and prints out possible loops
+	x [cmd]    - Executes a python command
 	string [x] - Searches malware for suspicious looking strings
 	             x = filename/path in double-quotes
 	cont [x]   - Continue Emulation
@@ -622,10 +629,8 @@ IHOOKS = {
 #   MAIN
 ###################################################################################
 def main(argv):
-
-	os.system("gnome-terminal -e 'bash -c \"killall -9 r2; r2 -Aw -qc=h "+ argv[0] +"\" '")
-
-	time.sleep(1)	
+	subprocess.Popen(['r2', '-qc=h', argv[0]], stdout=FNULL, stderr=FNULL)
+	time.sleep(2)
 	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
 	eapi = ApiEmu()
@@ -643,6 +648,12 @@ def main(argv):
 
 		if scommand[0] in COMMANDS:
 			COMMANDS[scommand[0]](r2, eapi, scommand[1:])
+		elif scommand[0] == 'x':
+			try:
+				exec(command[2:])
+			except Exception as e:
+				print e
+				pass
 		else:
 			print r2.cmd(command)
 
