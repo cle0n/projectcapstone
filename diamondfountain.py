@@ -522,6 +522,7 @@ def PathFind(r2=None, eapi=None, args=None):
 	#print "BBS After"
 	#print eapi.voy.bbs
 	eapi.voy.PathFinder([], eapi.voy.bbs[0]['addr'])
+	print 
 	return
 	
 

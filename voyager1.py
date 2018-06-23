@@ -150,7 +150,11 @@ class Voyager:
 		self.pathcount += 1
    		sys.stdout.write("Paths counted: %s\r"% self.pathcount)
    		sys.stdout.flush()
-		#self.pathlist.append(path)
+		#if path in self.pathlist:
+		#	print "Duplicate path!"
+		#	print "Something is fucky"
+		#	return
+		self.pathlist.append(path)
 		
 		
 
