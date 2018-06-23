@@ -37,12 +37,13 @@ import os
 import time
 import sys
 import base64
+from voyager1 import Voyager
 
 
 class ApiEmu:
 	ret_stk = []
 	CONTEXT = {}
-
+	voy = None
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
 	]
@@ -411,6 +412,8 @@ def InitEmu(r2, eapi=None, args=None):
 			r2.cmd('aeim 0x60C000 0x32000 stack')
 		elif arg == 'b':
 			BuildSymbols(r2, eapi)
+	eapi.voy = Voyager(r2)
+	
 
 def Continue(r2, eapi, args=None):
 	count     = 1
@@ -502,6 +505,23 @@ def String(r2, eapi=None, args=None):
 		else:
 			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
 
+def PathFind(r2=None, eapi=None, args=None):
+	#line = r2.cmdj("pdbj")[0]['offset']
+	#print eapi.voy.bbs[0]['addr']
+	#print "BBS Before"
+	#print eapi.voy.bbs
+	eapi.voy.__init__(r2) # Need to do this to reinit voy.bbs
+	#print "BBS After"
+	#print eapi.voy.bbs
+	eapi.voy.PathFinder([], eapi.voy.bbs[0]['addr'])
+	return
+	
+
+def PrintLoops(r2=None, eapi=None, args=None):
+	eapi.voy.ViewLoops()
+	return	
+
+
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
 	init [aeb] - Initializes ESIL VM
@@ -520,15 +540,17 @@ def Help(r2=None, eapi=None, args=None):
 	print HELP
 
 COMMANDS = {
-	'init'   : InitEmu,
-	'symb'   : BuildSymbols,
-	'loadmod': BuildInMemoryModules,
-	'api'    : Api,
-	'string' : String,
-	'cont'   : Continue,
-	'step'   : Step,
-	'stop'   : Stop,
-	'help'   : Help,
+	'init'    : InitEmu,
+	'symb'    : BuildSymbols,
+	'loadmod' : BuildInMemoryModules,
+	'api'     : Api,
+	'string'  : String,
+	'cont'    : Continue,
+	'step'    : Step,
+	'stop'    : Stop,
+	'pathfind': PathFind,
+	'loops'   : PrintLoops,
+	'help'    : Help,
 }
 
 #   INSTRUCTION HOOK CALLBACKS
