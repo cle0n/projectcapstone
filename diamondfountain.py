@@ -44,7 +44,12 @@ FNULL = open(os.devnull, 'w')
 
 class ApiEmu:
 	ret_stk = []
+	jmp_stk = {
+		'count': {},
+		'order': [],
+	}
 	CONTEXT = {}
+	loop_detected = False
 	voy = None
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
@@ -623,12 +628,45 @@ def HOOK_CPUID(r2, insn, eapi):
 		r2.cmd('aes')
 	return 1
 
+def HOOK_JMP(r2, insn, eapi):
+
+	if insn[0]['addr'] in eapi.jmp_stk['count']:
+		eapi.loop_dectected = True
+#		print "Loop detected!"
+		if eapi.jmp_stk['count'][insn[0]['addr']]+1 not in eapi.jmp_stk['count'].values():
+#			print "Top of loop detected!"
+
+			if eapi.jmp_stk['count'][insn[0]['addr']] > 4:  # Jump count threshold = 4
+				print "Loop:"
+				for addr in eapi.jmp_stk['order']: # Make sure to use 'order' array to retrieve jumps in order ('count' dictionary doesn't keep order info)
+					if eapi.jmp_stk['count'][addr] == eapi.jmp_stk['count'][insn[0]['addr']]:
+						print hex(addr)
+		eapi.jmp_stk['count'][insn[0]['addr']] += 1
+		
+		#print eapi.jmp_stk
+		r2.cmd('aes')
+		return 1
+	else:
+		eapi.jmp_stk['count'][insn[0]['addr']] = 1
+		eapi.jmp_stk['order'].append(insn[0]['addr'])
+	r2.cmd('aes')
+	return 0
+
 IHOOKS = {
 	'call' : HOOK_CALL,
 	'ret'  : HOOK_RET,
 	'cpuid': HOOK_CPUID,
 	'bt'   : HOOK_BT,
-	#'cdq'  : HOOK_CDQ,
+#	'cdq'  : HOOK_CDQ,
+	'jne'  : HOOK_JMP,
+	'jle'  : HOOK_JMP,
+	'jl'   : HOOK_JMP,
+	'jge'  : HOOK_JMP,
+	'jg'   : HOOK_JMP,
+	'je'   : HOOK_JMP,
+#	'jne'  : HOOK_JMP,
+#	'jne'  : HOOK_JMP,
+#	'jne'  : HOOK_JMP,
 }
 
 #   MAIN
