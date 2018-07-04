@@ -630,8 +630,20 @@ def HOOK_CPUID(r2, insn, eapi):
 
 def HOOK_JMP(r2, insn, eapi):
 
+	if eapi.loop_detected:
+		if insn[0]['addr'] == eapi.loop_detected:
+			skip = raw_input("Skip loop? (y/n): ")
+			if skip.lower() == 'y':
+				r2.cmd('s eip')
+				r2.cmd('so')
+				r2.cmd('aeip')
+				eapi.jmp_stk['count'] = {}
+				eapi.jmp_stk['order'] = []
+				eapi.loop_detected = False
+				return 1
+
 	if insn[0]['addr'] in eapi.jmp_stk['count']:
-		eapi.loop_dectected = True
+		#eapi.loop_dectected = True
 #		print "Loop detected!"
 		if eapi.jmp_stk['count'][insn[0]['addr']]+1 not in eapi.jmp_stk['count'].values():
 #			print "Top of loop detected!"
@@ -641,6 +653,7 @@ def HOOK_JMP(r2, insn, eapi):
 				for addr in eapi.jmp_stk['order']: # Make sure to use 'order' array to retrieve jumps in order ('count' dictionary doesn't keep order info)
 					if eapi.jmp_stk['count'][addr] == eapi.jmp_stk['count'][insn[0]['addr']]:
 						print hex(addr)
+						eapi.loop_detected = addr # This will be populated with the last address once the loop is done. Skip this address!
 		eapi.jmp_stk['count'][insn[0]['addr']] += 1
 		
 		#print eapi.jmp_stk
