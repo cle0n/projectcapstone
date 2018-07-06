@@ -535,6 +535,15 @@ def PrintLoops(r2=None, eapi=None, args=None):
 	eapi.voy.ViewLoops()
 	return	
 
+def RemoveBreakpoints(r2, eapi=None, args=None):
+	line = r2.cmdj("/xj bf02000000") #Find Breakpoint
+	if line:
+		print "Break point found @ " + hex(line[0]['offset']) #Print successful find.	
+		r2.cmd("wx 9090" + hex(line[0]['offset'])) #puts NOP
+		print "Removed."
+	else:
+		print "No Breakpoints found."
+	return
 
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
@@ -552,6 +561,7 @@ def Help(r2=None, eapi=None, args=None):
 	             x = number of times to continue (default=1)
 	step [x]   - Analyzed Step
 	             x = number of times to step (default=1)
+	Break    - Remove all breakpoints
 	stop       - Exit and kill r2
 	help       - Display this help"""
 	print HELP
@@ -567,6 +577,7 @@ COMMANDS = {
 	'stop'    : Stop,
 	'pathfind': PathFind,
 	'loops'   : PrintLoops,
+	'break'   : RemoveBreakpoints,
 	'help'    : Help,
 }
 
@@ -685,7 +696,7 @@ IHOOKS = {
 #   MAIN
 ###################################################################################
 def main(argv):
-	subprocess.Popen(['r2', '-qc=h', argv[0]], stdout=FNULL, stderr=FNULL)
+	subprocess.Popen(['r2','-w', '-qc=h', argv[0]], stdout=FNULL, stderr=FNULL)
 	time.sleep(2)
 	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
