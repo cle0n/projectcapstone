@@ -43,6 +43,7 @@ from voyager1 import Voyager
 FNULL = open(os.devnull, 'w')
 
 class ApiEmu:
+	verbosity = 0
 	ret_stk = []
 	jmp_stk = {
 		'count': {},
@@ -51,6 +52,7 @@ class ApiEmu:
 	CONTEXT = {}
 	loop_detected = False
 	voy = None
+	ctf = False
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
 	]
@@ -76,51 +78,53 @@ class ApiEmu:
 	
 	def __init__(self):
 		self.SYMBOLS = {
-			'diamond_def'              : self._DiamondDefault,
-			'RegOpenKeyExW'            : self._RegOpenKeyExW,
-			'RegCloseKey'              : self._RegCloseKey,
-			'ExitProcess'              : self._ExitProcess,
-			'GetAdaptersAddresses'     : self._GetAdaptersAddresses,
-			'GetProcessHeap'           : self._GetProcessHeap,
-			'HeapAlloc'                : self._HeapAlloc,
-			'HeapFree'                 : self._HeapFree,
-			'StrCmpNI'                 : self._StrCmpNI,
-			'StrRStrIW'                : self._StrRStrIW,
-			'ExpandEnvironmentStringsW': self._ExpandEnvironmentStrings,
-			'FindFirstFileW'           : self._FindFirstFileW,
-			'FindClose'                : self._FindClose,
-			'EnumProcesses'            : self._EnumProcesses,
-			'OpenProcess'              : self._OpenProcess,
-			'CloseHandle'              : self._CloseHandle,
-			'GetModuleFileNameExW'     : self._GetModuleFileNameExW,
-			'OpenSCManagerW'           : self._OpenSCManagerW,
-			'EnumServiceStatusW'       : self._EnumServiceStatusW,
-			'CloseServiceHandle'       : self._CloseServiceHandle,
-			'GetLastError'             : self._GetLastError,
-			'wprintf'                  : self._wprintf,
-			'_snwprintf'               : self.__snwprintf,
-			'memset'                   : self._memset,
-			'wcslen'                   : self._wcslen,
-			'GetSystemTimeAsFileTime'  : self._GetSystemTimeAsFileTime,
-			'GetCurrentProcessId'      : self._GetCurrentProcessId,
-			'GetCurrentThreadId'       : self._GetCurrentThreadId,
-			'GetTickCount'             : self._GetTickCount,
-			'QueryPerformanceCounter'  : self._QueryPerformanceCounter,
-			'LoadLibraryA'             : self._LoadLibraryA,
-			'GetProcAddress'           : self._GetProcAddress,
-			'SetErrorMode'             : self._SetErrorMode,
-			'GetModuleFileNameA'       : self._GetModuleFileNameA,
-			'GetCurrentDirectoryA'     : self._GetCurrentDirectoryA,
-			'GetComputerNameA'         : self._GetComputerNameA,
-			'GetFileAttributesA'       : self._GetFileAttributesA,
-			'TlsGetValue'              : self._TlsGetValue,
-			'GlobalUnfix'              : self._GlobalUnfix,
-			'IsDebuggerPresent'	   : self._IsDebuggerPresent,
+			'diamond_def'               : self._DiamondDefault,
+			'RegOpenKeyExW'             : self._RegOpenKeyExW,
+			'RegCloseKey'               : self._RegCloseKey,
+			'ExitProcess'               : self._ExitProcess,
+			'GetAdaptersAddresses'      : self._GetAdaptersAddresses,
+			'GetProcessHeap'            : self._GetProcessHeap,
+			'HeapAlloc'                 : self._HeapAlloc,
+			'HeapFree'                  : self._HeapFree,
+			'StrCmpNI'                  : self._StrCmpNI,
+			'StrRStrIW'                 : self._StrRStrIW,
+			'ExpandEnvironmentStringsW' : self._ExpandEnvironmentStrings,
+			'FindFirstFileW'            : self._FindFirstFileW,
+			'FindClose'                 : self._FindClose,
+			'EnumProcesses'             : self._EnumProcesses,
+			'OpenProcess'               : self._OpenProcess,
+			'CloseHandle'               : self._CloseHandle,
+			'GetModuleFileNameExW'      : self._GetModuleFileNameExW,
+			'OpenSCManagerW'            : self._OpenSCManagerW,
+			'EnumServiceStatusW'        : self._EnumServiceStatusW,
+			'CloseServiceHandle'        : self._CloseServiceHandle,
+			'GetLastError'              : self._GetLastError,
+			'wprintf'                   : self._wprintf,
+			'_snwprintf'                : self.__snwprintf,
+			'memset'                    : self._memset,
+			'wcslen'                    : self._wcslen,
+			'GetSystemTimeAsFileTime'   : self._GetSystemTimeAsFileTime,
+			'GetCurrentProcessId'       : self._GetCurrentProcessId,
+			'GetCurrentThreadId'        : self._GetCurrentThreadId,
+			'GetTickCount'              : self._GetTickCount,
+			'QueryPerformanceCounter'   : self._QueryPerformanceCounter,
+			'LoadLibraryA'              : self._LoadLibraryA,
+			'GetProcAddress'            : self._GetProcAddress,
+			'SetErrorMode'              : self._SetErrorMode,
+			'GetModuleFileNameA'        : self._GetModuleFileNameA,
+			'GetCurrentDirectoryA'      : self._GetCurrentDirectoryA,
+			'GetComputerNameA'          : self._GetComputerNameA,
+			'GetFileAttributesA'        : self._GetFileAttributesA,
+			'TlsGetValue'               : self._TlsGetValue,
+			'GlobalUnfix'               : self._GlobalUnfix,
+			'IsDebuggerPresent'	    : self._IsDebuggerPresent,
+			'CheckRemoteDebuggerPresent': self._CheckRemoteDebuggerPresent,
 		}
 		
 	def _DiamondDefault(self, r2):
-		print "! Unknown API"
-		print r2.cmd('pd 1')
+		if self.verbosity > 0:
+			print "! Unknown API"
+			print r2.cmd('pd 1')
 		return
 
 	def _IsDebuggerPresent(self, r2):
@@ -138,7 +142,10 @@ class ApiEmu:
 			else:
 				print "Invalid answer."
 
-		
+	def _CheckRemoteDebuggerPresent(self, r2):
+		print "! CheckRemoteDebuggerPresent"
+		r2.cmd('ar esp=esp+8')
+			
 	def _GetAdaptersAddresses(self, r2):
 		print "! GetAdaptersAddresses #TODO"
 	def _GetProcessHeap(self, r2):
@@ -418,6 +425,17 @@ def InitEmu(r2, eapi=None, args=None):
 			r2.cmd('aei')
 			r2.cmd('aeip')
 			r2.cmd('aeim 0x60C000 0x32000 stack')
+			# Re-init internal vars to prevent bugs caused by multiple inits
+			ret_stk = []
+			jmp_stk = {
+				'count': {},
+				'order': [],
+			}
+			CONTEXT = {}
+			loop_detected = False
+			voy = None
+			ctf = False
+
 		elif arg == 'b':
 			BuildSymbols(r2, eapi)
 	
@@ -448,6 +466,10 @@ def Continue(r2, eapi, args=None):
 				break
 			
 			insn = r2.cmdj('aoj @ eip')
+			if not insn:
+				print "Invalid instruction reached! Automatic analysis cannot continue."
+				eapi.ctf = False
+				break
 
 			if insn[0]['mnemonic'] in IHOOKS:
 				ret = IHOOKS[insn[0]['mnemonic']](r2, insn, eapi)
@@ -458,13 +480,27 @@ def Continue(r2, eapi, args=None):
 				if 'disp' and 'segment' in op and op['segment'] == 'fs':
 					print "! FS:0 detected. Adjust manually before continuing."
 					r2.cmd('aes; s eip')
-					return
+					if not eapi.ctf:
+						return
 
 			r2.cmd('aes')
 			stepcount -= 1
 
 		count -= 1
 		r2.cmd('s eip')
+
+def ContinueTilFail(r2, eapi=None, args=None):
+	if not eapi:
+		print "Not initialized"
+		return 1
+	eapi.ctf = True
+	if args:
+		Continue(r2, eapi, args)
+		eapi.ctf = False
+	else:
+		while eapi.ctf:
+			Continue(r2, eapi, args)
+	return 0
 
 def Step(r2, eapi=None, args=None):
 	if args:
@@ -535,25 +571,47 @@ def PrintLoops(r2=None, eapi=None, args=None):
 	eapi.voy.ViewLoops()
 	return	
 
+def Verbosity(r2, eapi=None, args=None):
+	if not args:
+		print 'Verbosity Level: ' + str(eapi.verbosity)
+		return
+	if args[0] == '+':
+		eapi.verbosity += 1
+		if eapi.verbosity > 2:
+			eapi.verbosity = 2
+	if args[0] == '++':
+		eapi.verbosity = 2
+	if args[0] == '-':
+		eapi.verbosity -= 1
+		if eapi.verbosity < 0:
+			eapi.verbosity = 0
+	if args[0] == '--':
+		eapi.verbosity = 0
+
+
 
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
-	init [aeb] - Initializes ESIL VM
-	             a = analyze, e = emulation, b = symbols (separate with spaces)
-	symb       - Builds list of imports links known ones to our emulated API's
-	loadmod    - Builds mock TIB/PEB and loads kernel32.dll export info 
-	api        - Get a list of Suspicious APIs in the malware
-	pathfind   - Examines a function and maps out all possible paths
-	loops      - Examines a function and prints out possible loops
-	x [cmd]    - Executes a python command
-	string [x] - Searches malware for suspicious looking strings
-	             x = filename/path in double-quotes
-	cont [x]   - Continue Emulation
-	             x = number of times to continue (default=1)
-	step [x]   - Analyzed Step
-	             x = number of times to step (default=1)
-	stop       - Exit and kill r2
-	help       - Display this help"""
+	init   [aeb] - Initializes ESIL VM
+	               a = analyze, e = emulation, b = symbols (separate with spaces)
+	symb         - Builds list of imports links known ones to our emulated API's
+	loadmod      - Builds mock TIB/PEB and loads kernel32.dll export info 
+	api          - Get a list of Suspicious APIs in the malware
+	pathfind     - Examines a function and maps out all possible paths
+	loops        - Examines a function and prints out possible loops
+	v      [+-]  - Changes verbosity levels using v + or v - to increase or decrease
+		       Use v ++ for max verbosity or v -- for minimum verbosity
+	x      [cmd] - Executes a python command
+	string [x]   - Searches malware for suspicious looking strings
+	               x = filename/path in double-quotes
+	cont   [x]   - Continue Emulation
+	               x = number of times to continue (default=1)
+	ctf    [x]   - Continue 'Til Fail, continues and automatically skips loops and takes expected returns
+		       x = number of times to continue (default=infinity) 
+	step   [x]   - Analyzed Step
+	               x = number of times to step (default=1)
+	stop         - Exit and kill r2
+	help         - Display this help"""
 	print HELP
 
 COMMANDS = {
@@ -563,10 +621,12 @@ COMMANDS = {
 	'api'     : Api,
 	'string'  : String,
 	'cont'    : Continue,
+	'ctf'	  : ContinueTilFail,
 	'step'    : Step,
 	'stop'    : Stop,
 	'pathfind': PathFind,
 	'loops'   : PrintLoops,
+	'v'	  : Verbosity,
 	'help'    : Help,
 }
 
@@ -578,23 +638,36 @@ def HOOK_CALL(r2, insn, eapi):
 	# don't care what kind of call.
 	expected_ret_val = hex(insn[0]['addr'] + insn[0]['size'])
 	eapi.ret_stk.append(expected_ret_val)
-	print "! EXPECTED RETURN: " + expected_ret_val
+	if eapi.verbosity > 1:
+		print "! EXPECTED RETURN: " + expected_ret_val
 	r2.cmd('s eip')
-	print r2.cmd('pd 1')
+	if eapi.verbosity > 1:
+		print r2.cmd('pd 1')
 	r2.cmd('aes')
 	return 1
 
 def HOOK_RET(r2, insn, eapi):
 	ret_val = hex(r2.cmdj('pxwj @ esp')[0])
-	print "! RET " + ret_val
+	if eapi.verbosity > 1:
+		print "! RET " + ret_val
 	if eapi.ret_stk:
 		expected_ret_val = eapi.ret_stk.pop()
 		if expected_ret_val != ret_val:
 			print "! UNEXPECTED RETURN (LIKELY STACK MANIPULATION)"
 			print "  > EXPECTED: " + expected_ret_val
 			print "  > ACTUAL  : " + ret_val
+			if eapi.ctf:
+				proceed = 'y'
+			else:
+				proceed = raw_input("Proceed to expected return address? (y/n): ")
+			if proceed.lower() == 'y':
+				print("Proceeding to expected return")
+				r2.cmd('s ' + expected_ret_val)
+				r2.cmd('aeip')
+				return 1
 		else:
-			print "! VALID RETURN"
+			if eapi.verbosity > 1:
+				print "! VALID RETURN"
 	r2.cmd('aes')
 	return 1
 
@@ -632,8 +705,13 @@ def HOOK_JMP(r2, insn, eapi):
 
 	if eapi.loop_detected:
 		if insn[0]['addr'] == eapi.loop_detected:
-			skip = raw_input("Skip loop? (y/n): ")
+			if eapi.ctf:
+				skip = 'y'
+			else:
+				skip = raw_input("Skip loop? (y/n): ")
 			if skip.lower() == 'y':
+				if eapi.verbosity > 1:
+					print "Loop skipped"
 				r2.cmd('s eip')
 				r2.cmd('so')
 				r2.cmd('aeip')
@@ -644,15 +722,19 @@ def HOOK_JMP(r2, insn, eapi):
 
 	if insn[0]['addr'] in eapi.jmp_stk['count']:
 		#eapi.loop_dectected = True
-#		print "Loop detected!"
+		if eapi.verbosity > 1:		
+			print "Loop detected!"
 		if eapi.jmp_stk['count'][insn[0]['addr']]+1 not in eapi.jmp_stk['count'].values():
-#			print "Top of loop detected!"
+			if eapi.verbosity > 1:		
+				print "Top of loop detected!"
 
 			if eapi.jmp_stk['count'][insn[0]['addr']] > 4:  # Jump count threshold = 4
-				print "Loop:"
+				if eapi.verbosity > 1:
+					print "Loop:"
 				for addr in eapi.jmp_stk['order']: # Make sure to use 'order' array to retrieve jumps in order ('count' dictionary doesn't keep order info)
 					if eapi.jmp_stk['count'][addr] == eapi.jmp_stk['count'][insn[0]['addr']]:
-						print hex(addr)
+						if eapi.verbosity > 1:
+							print hex(addr)
 						eapi.loop_detected = addr # This will be populated with the last address once the loop is done. Skip this address!
 		eapi.jmp_stk['count'][insn[0]['addr']] += 1
 		
@@ -695,7 +777,13 @@ def main(argv):
 	print "Enter help for a list of commands."
 
 	while True:
-		command = raw_input('[' + r2.cmd('s') + ']> ')
+		addr = r2.cmd('s')
+		if addr:
+			command = raw_input('[' + addr + ']> ')
+		else:
+			subprocess.Popen(['pkill', 'r2', argv[0]], stdout=FNULL, stderr=FNULL)
+			r2   = r2pipe.open('http://127.0.0.1:9090')
+			continue
 		
 		if not command:
 			continue
