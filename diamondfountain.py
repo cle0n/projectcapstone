@@ -529,17 +529,43 @@ def PrintLoops(r2=None, eapi=None, args=None):
 
 
 def RemoveBreakpoints(r2, eapi=None, args=None):
+	sketchy_functions    = [
+				'sub.KERNEL32.dll_GetSystemTimeAsFileTime_b8c',
+				'sub.KERNEL32.dll_SetUnhandledExceptionFilter_38c',
+			       ]
+	sketchy_instructions = [
+				'int 3',
+			       ]
 
-	line = r2.cmdj("/xj e8cafeffff")	
-	if line:	
-		for element in line:
-			
-			print "Break point found @ " + hex(element['offset'])	
-			r2.cmd("wx 0x9090909090 @ " + hex(element['offset']))
-			print "Removed."
+	for sf in sketchy_functions:
+		line = r2.cmdj("axtj " + sf)	
+		if line:	
+			for element in line:
+				nopslide = '0x'
+				print "Break point found @ " + hex(element['fcn_addr'])
+				instr = r2.cmdj('pdj 1 @' + hex(element['fcn_addr']))	
+				length = len(instr[0]['bytes'])
+				for index in xrange(length/2):
+					nopslide += '90'
+				r2.cmd("wx " + nopslide + " @ " + hex(element['fcn_addr']))
+				print "Removed."
+		else:
+			print "No function breakpoints found."
+
+	for si in sketchy_instructions:
+		line = r2.cmdj("/cj " + si)	
+		if line:	
+			for element in line:
+				nopslide = '0x'
+				print "Break point found @ " + hex(element['offset'])
+				instr = r2.cmdj('pdj 1 @' + hex(element['offset']))	
+				length = len(instr[0]['bytes'])
+				for index in xrange(length/2):
+					nopslide += '90'
+				r2.cmd("wx " + nopslide + " @ " + hex(element['offset']))
+				print "Removed."
 		else:
 			print "No Breakpoints found."
-			break
 	return
 
 
