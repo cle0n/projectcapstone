@@ -1,5 +1,4 @@
 '''
-
 	*Visual Mode not supported.
 	*Certain r2 commands won't work
 	*Can't use pipes :(
@@ -13,20 +12,16 @@
 	
 	- Have some command to view internal data structure that we manage and be
 	  able to edit them?
-
 	- continue making API defs
 	
 	- add hooks for memory read/write/execute 
 	
 	- test out revolver-style task calling
-
 	- Figure out which instructions radare2 can't emulate and emulate them
 	  - cpuid, bt, cdq
 	
 	- SEH, fs:[0]. How the hell to detect exceptions? Can't without extensive analysis
-
 	- add breakpoints?
-
 '''
 
 import subprocess
@@ -44,12 +39,7 @@ FNULL = open(os.devnull, 'w')
 
 class ApiEmu:
 	ret_stk = []
-	jmp_stk = {
-		'count': {},
-		'order': [],
-	}
 	CONTEXT = {}
-	loop_detected = False
 	voy = None
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
@@ -116,12 +106,14 @@ class ApiEmu:
 			'TlsGetValue'              : self._TlsGetValue,
 			'GlobalUnfix'              : self._GlobalUnfix,
 			'IsDebuggerPresent'	   : self._IsDebuggerPresent,
+
 		}
 		
 	def _DiamondDefault(self, r2):
 		print "! Unknown API"
 		print r2.cmd('pd 1')
 		return
+
 
 	def _IsDebuggerPresent(self, r2):
 		print "! IsDebuggerPresent"
@@ -494,12 +486,12 @@ def Api(r2, eapi=None, args=None):
 	for symbol in r2.cmdj('isj'):
 		for API in ApiEmu.susp_api:
 			if API in symbol['flagname']:
-				print "!", API
+				print "!" + API + " @ " + hex(symbol['vaddr'])
 
 def String(r2, eapi=None, args=None):
 	#Can't display mutiple finds.
 	for index in xrange(len(ApiEmu.susp_string)):
-		res = r2.cmdj('/j ' + ApiEmu.susp_string[index] )
+		res = r2.cmdj('/j ' + ApiEmu.susp_string[index])
 		
 		if res:
 			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
@@ -535,15 +527,21 @@ def PrintLoops(r2=None, eapi=None, args=None):
 	eapi.voy.ViewLoops()
 	return	
 
+
 def RemoveBreakpoints(r2, eapi=None, args=None):
-	line = r2.cmdj("/xj bf02000000") #Find Breakpoint
-	if line:
-		print "Break point found @ " + hex(line[0]['offset']) #Print successful find.	
-		r2.cmd("wx 9090" + hex(line[0]['offset'])) #puts NOP
-		print "Removed."
-	else:
-		print "No Breakpoints found."
+
+	line = r2.cmdj("/xj e8cafeffff")	
+	if line:	
+		for element in line:
+			
+			print "Break point found @ " + hex(element['offset'])	
+			r2.cmd("wx 0x9090909090 @ " + hex(element['offset']))
+			print "Removed."
+		else:
+			print "No Breakpoints found."
+			break
 	return
+
 
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
@@ -561,8 +559,9 @@ def Help(r2=None, eapi=None, args=None):
 	             x = number of times to continue (default=1)
 	step [x]   - Analyzed Step
 	             x = number of times to step (default=1)
-	Break    - Remove all breakpoints
+	rmBreak    - Remove all breakpoints
 	stop       - Exit and kill r2
+
 	help       - Display this help"""
 	print HELP
 
@@ -577,7 +576,7 @@ COMMANDS = {
 	'stop'    : Stop,
 	'pathfind': PathFind,
 	'loops'   : PrintLoops,
-	'break'   : RemoveBreakpoints,
+	'rmBreak' : RemoveBreakpoints,
 	'help'    : Help,
 }
 
@@ -639,64 +638,18 @@ def HOOK_CPUID(r2, insn, eapi):
 		r2.cmd('aes')
 	return 1
 
-def HOOK_JMP(r2, insn, eapi):
-
-	if eapi.loop_detected:
-		if insn[0]['addr'] == eapi.loop_detected:
-			skip = raw_input("Skip loop? (y/n): ")
-			if skip.lower() == 'y':
-				r2.cmd('s eip')
-				r2.cmd('so')
-				r2.cmd('aeip')
-				eapi.jmp_stk['count'] = {}
-				eapi.jmp_stk['order'] = []
-				eapi.loop_detected = False
-				return 1
-
-	if insn[0]['addr'] in eapi.jmp_stk['count']:
-		#eapi.loop_dectected = True
-#		print "Loop detected!"
-		if eapi.jmp_stk['count'][insn[0]['addr']]+1 not in eapi.jmp_stk['count'].values():
-#			print "Top of loop detected!"
-
-			if eapi.jmp_stk['count'][insn[0]['addr']] > 4:  # Jump count threshold = 4
-				print "Loop:"
-				for addr in eapi.jmp_stk['order']: # Make sure to use 'order' array to retrieve jumps in order ('count' dictionary doesn't keep order info)
-					if eapi.jmp_stk['count'][addr] == eapi.jmp_stk['count'][insn[0]['addr']]:
-						print hex(addr)
-						eapi.loop_detected = addr # This will be populated with the last address once the loop is done. Skip this address!
-		eapi.jmp_stk['count'][insn[0]['addr']] += 1
-		
-		#print eapi.jmp_stk
-		r2.cmd('aes')
-		return 1
-	else:
-		eapi.jmp_stk['count'][insn[0]['addr']] = 1
-		eapi.jmp_stk['order'].append(insn[0]['addr'])
-	r2.cmd('aes')
-	return 0
-
 IHOOKS = {
 	'call' : HOOK_CALL,
 	'ret'  : HOOK_RET,
 	'cpuid': HOOK_CPUID,
 	'bt'   : HOOK_BT,
-#	'cdq'  : HOOK_CDQ,
-	'jne'  : HOOK_JMP,
-	'jle'  : HOOK_JMP,
-	'jl'   : HOOK_JMP,
-	'jge'  : HOOK_JMP,
-	'jg'   : HOOK_JMP,
-	'je'   : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
+	#'cdq'  : HOOK_CDQ,
 }
 
 #   MAIN
 ###################################################################################
 def main(argv):
-	subprocess.Popen(['r2','-w', '-qc=h', argv[0]], stdout=FNULL, stderr=FNULL)
+	subprocess.Popen(['r2', '-qc=h', '-w', argv[0]], stdout=FNULL, stderr=FNULL)
 	time.sleep(2)
 	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
