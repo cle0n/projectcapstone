@@ -598,6 +598,40 @@ def String(r2, eapi=None, args=None):
 		else:
 			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
 
+def RemoveBreakpoints(r2, eapi=None, args=None):
+    sketchy_functions = [
+                'sub.KERNEL32.dll_GetSystemTimeAsFileTime_b8c',
+                'sub.KERNEL32.dll_SetUnhandledExceptionFilter_38c',
+                ]
+
+
+    for sf in sketchy_functions:
+
+        line = r2.cmdj("axtj " + sf)    
+
+        if line:    
+
+            for element in line:
+
+                nopslide = '0x'
+
+                print "Break point found @ " + hex(element['fcn_addr'])
+                instr = r2.cmdj('pdj 1 @' + hex(element['fcn_addr']))    
+                length = len(instr[0]['bytes'])
+                for index in xrange(length/2):
+                    nopslide += '90'
+
+                r2.cmd("wx " + nopslide + " @ " + hex(element['fcn_addr']))
+
+                print "Removed."
+
+        else:
+
+            print "No Breakpoints found."
+
+    return
+
+
 def PathFind(r2=None, eapi=None, args=None):
 	paths = r2.cmdj('afbj')
 	if not paths:
@@ -693,6 +727,7 @@ def Help(r2=None, eapi=None, args=None):
 	x      [cmd] - Executes a python command
 	string [x]   - Searches malware for suspicious looking strings
 	               x = filename/path in double-quotes
+	rmBreak	     - Removes breakpoints set by malware author. 
 	cont   [x]   - Continue Emulation
 	               x = number of times to continue (default=1)
 	ctf    [x]   - Continue 'Til Fail, continues and automatically skips loops and takes expected returns
@@ -717,6 +752,7 @@ COMMANDS = {
 	'stop'    : Stop,
 	'pathfind': PathFind,
 	'loops'   : PrintLoops,
+	'rmBreak' : RemoveBreakpoints,
 	'v'	  : Verbosity,
 	'rmBreak' : RemoveBreakpoints,
 	'help'    : Help,
@@ -892,6 +928,7 @@ IHOOKS = {
 ###################################################################################
 def main(argv):
 	# There will be problems if the file is not writable!
+
 	subprocess.Popen(['r2', '-qc=h', '-w', argv[0]], stdout=FNULL, stderr=FNULL)
 	time.sleep(2)
 	
