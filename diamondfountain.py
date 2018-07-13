@@ -1,5 +1,4 @@
 '''
-
 	*Visual Mode not supported.
 	*Certain r2 commands won't work
 	*Can't use pipes :(
@@ -13,20 +12,16 @@
 	
 	- Have some command to view internal data structure that we manage and be
 	  able to edit them?
-
 	- continue making API defs
 	
 	- add hooks for memory read/write/execute 
 	
 	- test out revolver-style task calling
-
 	- Figure out which instructions radare2 can't emulate and emulate them
 	  - cpuid, bt, cdq
 	
 	- SEH, fs:[0]. How the hell to detect exceptions? Can't without extensive analysis
-
 	- add breakpoints?
-
 '''
 
 import subprocess
@@ -43,7 +38,7 @@ from voyager1 import Voyager
 FNULL = open(os.devnull, 'w')
 
 class ApiEmu:
-	verbosity = 0
+	verbosity = 1
 	ret_stk = []
 	jmp_stk = {
 		'count': {},
@@ -53,17 +48,33 @@ class ApiEmu:
 	loop_detected = False
 	voy = None
 	ctf = False
+	pushes = 0
 	susp_reg_key = [
 		'SOFTWARE\VMware, Inc.\VMware Tools',
+		'HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\Scsi\Scsi Port 2\Scsi Bus 0\Target Id 0\Logical Unit Id 0\Identifier',
+		'SYSTEM\CurrentControlSet\Enum\SCSI\Disk&Ven_VMware_&Prod_VMware_Virtual_S',
+		'SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\\root#vmwvmcihostdev',
+		'SYSTEM\CurrentControlSet\Control\VirtualDeviceDrivers',
 	]
 	
 	susp_string = [
-		"http", "00:05:69", "v",
+		"http", "00:05:69", #"v", This is probably a ctrl-v typo
 		"00:0C:29", "00:1C:14", 
 		"00:50:56", "08:00:27", 
-		"Vmtoolsd", "Vmwaretrat",
+		"Vmtoolsd", "Vmwaretrat", "VMTools",
+		"Vmhgfs", "VMMEMCTL", "Vmmouse", "Vmrawdsk",
+		"Vmusbmouse", "Vmvss", "Vmscsi", "Vmxnet",
+		"vmx_svga", "Vmware Tools", "Vmware Physical Disk Helper Service",
 		"Vmwareuser","Vmacthlp", "vboxservice"
-		"vboxtray","vm3dgl.dll","vmdum.dll","vm3dver.dll"
+		"vboxtray","vm3dgl.dll","vmdum.dll","vm3dver.dll",
+		"Vmmouse.sys", "vmtray.dll", "VMToolsHook.dll", "vmmousever.dll",
+		"vmhgfs.dll", "vmGuestLib.dll", "VmGuestLibJava.dll", "Driversvmhgfs.dll",
+		"VBoxMouse.sys", "VBoxGuest.sys", "VBoxSF.sys", "VBoxVideo.sys",
+		"vboxdisp.dll", "vboxhook.dll", "vboxmrxnp.dll", "vboxogl.dll",
+		"vboxoglarrayspu.dll", "vboxoglcrutil.dll", "vboxoglerrorspu.dll",
+		"vboxoglfeedbackspu.dll", "vboxoglpackspu.dll", "vboxoglpassthroughspu.dll",
+		"VBoxControl.exe", "vboxservice.exe", "vboxtray", "VMwareVMware", "VMware",
+		"Microsoft HV",
 	]
 
 	susp_api = [
@@ -73,59 +84,92 @@ class ApiEmu:
 		'OleGetClipboard',
 		'GetCommandLineA', 'GetCommandLineW',
 		'TlsGetValue',
-		'IsDebuggerPresent',
+		'IsDebuggerPresent', 'CheckRemoteDebuggerPresent',
 	]
 	
 	def __init__(self):
 		self.SYMBOLS = {
-			'diamond_def'               : self._DiamondDefault,
-			'RegOpenKeyExW'             : self._RegOpenKeyExW,
-			'RegCloseKey'               : self._RegCloseKey,
-			'ExitProcess'               : self._ExitProcess,
-			'GetAdaptersAddresses'      : self._GetAdaptersAddresses,
-			'GetProcessHeap'            : self._GetProcessHeap,
-			'HeapAlloc'                 : self._HeapAlloc,
-			'HeapFree'                  : self._HeapFree,
-			'StrCmpNI'                  : self._StrCmpNI,
-			'StrRStrIW'                 : self._StrRStrIW,
-			'ExpandEnvironmentStringsW' : self._ExpandEnvironmentStrings,
-			'FindFirstFileW'            : self._FindFirstFileW,
-			'FindClose'                 : self._FindClose,
-			'EnumProcesses'             : self._EnumProcesses,
-			'OpenProcess'               : self._OpenProcess,
-			'CloseHandle'               : self._CloseHandle,
-			'GetModuleFileNameExW'      : self._GetModuleFileNameExW,
-			'OpenSCManagerW'            : self._OpenSCManagerW,
-			'EnumServiceStatusW'        : self._EnumServiceStatusW,
-			'CloseServiceHandle'        : self._CloseServiceHandle,
-			'GetLastError'              : self._GetLastError,
-			'wprintf'                   : self._wprintf,
-			'_snwprintf'                : self.__snwprintf,
-			'memset'                    : self._memset,
-			'wcslen'                    : self._wcslen,
-			'GetSystemTimeAsFileTime'   : self._GetSystemTimeAsFileTime,
-			'GetCurrentProcessId'       : self._GetCurrentProcessId,
-			'GetCurrentThreadId'        : self._GetCurrentThreadId,
-			'GetTickCount'              : self._GetTickCount,
-			'QueryPerformanceCounter'   : self._QueryPerformanceCounter,
-			'LoadLibraryA'              : self._LoadLibraryA,
-			'GetProcAddress'            : self._GetProcAddress,
-			'SetErrorMode'              : self._SetErrorMode,
-			'GetModuleFileNameA'        : self._GetModuleFileNameA,
-			'GetCurrentDirectoryA'      : self._GetCurrentDirectoryA,
-			'GetComputerNameA'          : self._GetComputerNameA,
-			'GetFileAttributesA'        : self._GetFileAttributesA,
-			'TlsGetValue'               : self._TlsGetValue,
-			'GlobalUnfix'               : self._GlobalUnfix,
-			'IsDebuggerPresent'	    : self._IsDebuggerPresent,
-			'CheckRemoteDebuggerPresent': self._CheckRemoteDebuggerPresent,
+			'diamond_def'                   : self._DiamondDefault,
+			'RegOpenKeyExW'                 : self._RegOpenKeyExW,
+			'RegCloseKey'                   : self._RegCloseKey,
+			'ExitProcess'                   : self._ExitProcess,
+			'GetAdaptersAddresses'          : self._GetAdaptersAddresses,
+			'GetProcessHeap'                : self._GetProcessHeap,
+			'HeapAlloc'                     : self._HeapAlloc,
+			'HeapFree'                      : self._HeapFree,
+			'StrCmpNI'                      : self._StrCmpNI,
+			'StrRStrIW'                     : self._StrRStrIW,
+			'ExpandEnvironmentStringsW'  	: self._ExpandEnvironmentStrings,
+			'FindFirstFileW'             	: self._FindFirstFileW,
+			'FindClose'                  	: self._FindClose,
+			'EnumProcesses'              	: self._EnumProcesses,
+			'OpenProcess'                	: self._OpenProcess,
+			'CloseHandle'                	: self._CloseHandle,
+			'GetModuleFileNameExW'       	: self._GetModuleFileNameExW,
+			'OpenSCManagerW'             	: self._OpenSCManagerW,
+			'EnumServiceStatusW'         	: self._EnumServiceStatusW,
+			'CloseServiceHandle'         	: self._CloseServiceHandle,
+			'GetLastError'               	: self._GetLastError,
+			'wprintf'                    	: self._wprintf,
+			'_snwprintf'                 	: self.__snwprintf,
+			'memset'                     	: self._memset,
+			'wcslen'                     	: self._wcslen,
+			'GetSystemTimeAsFileTime'    	: self._GetSystemTimeAsFileTime,
+			'GetCurrentProcessId'        	: self._GetCurrentProcessId,
+			'GetCurrentThreadId'         	: self._GetCurrentThreadId,
+			'GetTickCount'               	: self._GetTickCount,
+			'QueryPerformanceCounter'    	: self._QueryPerformanceCounter,
+			'LoadLibraryA'               	: self._LoadLibraryA,
+			'GetProcAddress'             	: self._GetProcAddress,
+			'SetErrorMode'               	: self._SetErrorMode,
+			'GetModuleFileNameA'         	: self._GetModuleFileNameA,
+			'GetCurrentDirectoryA'       	: self._GetCurrentDirectoryA,
+			'GetComputerNameA'           	: self._GetComputerNameA,
+			'GetFileAttributesA'         	: self._GetFileAttributesA,
+			'TlsGetValue'                	: self._TlsGetValue,
+			'GlobalUnfix'                	: self._GlobalUnfix,
+			'IsDebuggerPresent'	     	: self._IsDebuggerPresent,
+			'CheckRemoteDebuggerPresent' 	: self._CheckRemoteDebuggerPresent,
+# START HERE		'SetUnhandledExceptionFilter'	: self._SetUnhandledExceptionFilter,
+#			'DbgUIConnectToDbg'		: self._DbgUIConnectToDbg,
+#			'QueryInformationProcess'	: self._QueryInformationProcess,
+#			'OutputDebugString'		: self._OutputDebugString,
+#			'EventPairHandles'		: self._EventPairHandles,
+#			'CsrGetProcessID'		: self._CsrGetProcessID,
+#			'FindProcess'			: self._FindProcess,
+#			'FindWindow'			: self._FindWindow,
+#			'NtQueryObject'			: self._NtQueryObject,
+#			'NtQuerySysteminformation'	: self._NtQuerySysteminformation,
+#			'NtContinue'			: self._NtContinue,
+#			'NtClose'			: self._NtClose,
+#			'GenerateConsoleCtrlEvent'	: self._GenerateConsoleCtrlEvent,
+#			'GetLocalTime'			: self._GetLocalTime,
+#			'GetSystemTime'			: self._GetSystemTime,
+#			'NtQueryPerformanceCounter'	: self._NtQueryPerformanceCounter,
+	
 		}
 		
 	def _DiamondDefault(self, r2):
+#		pushCount = 0
+#		addrAfterCall = r2.cmd('ar eip')
+#		print "Address after call: " + addrAfterCall
+#		addrOfCall = r2.cmd('/o 1 @ ' + addrAfterCall)
+#		print "Address of call: " + addrAfterCall
+#		curAddr = addrOfCall
+#		while True:
+#			instr = r2.cmdj('pdj 1 @ `/o 1 @ ' + curAddr + '`')
+#			print "Tried: " + str(curAddr)				
+#			print instr
+#			if instr[0][u'type'] != u'upush':
+#				break
+#			pushCount += 1
+#			curAddr = r2.cmd('/o 1 @ ' + curAddr)
 		if self.verbosity > 0:
 			print "! Unknown API"
 			print r2.cmd('pd 1')
+#			print str(pushCount) + ' variables pushed'
 		return
+
 
 	def _IsDebuggerPresent(self, r2):
 		print "! IsDebuggerPresent"
@@ -143,7 +187,9 @@ class ApiEmu:
 				print "Invalid answer."
 
 	def _CheckRemoteDebuggerPresent(self, r2):
+		#print "! LIKELY MALICIOUS CALL"
 		print "! CheckRemoteDebuggerPresent"
+		#print "! Address: " + r2.cmd('/o 1 @ `ar eip`')
 		r2.cmd('ar esp=esp+8')
 			
 	def _GetAdaptersAddresses(self, r2):
@@ -426,17 +472,18 @@ def InitEmu(r2, eapi=None, args=None):
 			r2.cmd('aeip')
 			r2.cmd('aeim 0x60C000 0x32000 stack')
 			# Re-init internal vars to prevent bugs caused by multiple inits
-			ret_stk = []
-			jmp_stk = {
-				'count': {},
-				'order': [],
-			}
-			CONTEXT = {}
-			loop_detected = False
-			voy = None
-			ctf = False
+			if eapi:
+				eapi.ret_stk = []
+				eapi.jmp_stk = {
+					'count': {},
+					'order': [],
+				}
+				eapi.CONTEXT = {}
+				eapi.loop_detected = False
+				eapi.voy = None
+				eapi.ctf = False
 
-		elif arg == 'b':
+		elif arg == 'b' and eapi:
 			BuildSymbols(r2, eapi)
 	
 
@@ -462,7 +509,8 @@ def Continue(r2, eapi, args=None):
 			if addr in SYMBOLS:
 				r2.cmd('.ar-; ar eip=[esp]; ar esp=esp+4')
 				SYMBOLS[addr](r2)
-				eapi.ret_stk.pop() # API emulations pop their own return addr
+				if eapi.ret_stk:
+					eapi.ret_stk.pop() # API emulations pop their own return addr
 				break
 			
 			insn = r2.cmdj('aoj @ eip')
@@ -519,7 +567,7 @@ def Stop(r2, eapi=None, args=None):
 	r2.quit()
 
 	FNULL.close()
-
+	# Try and fix this so it doesn't kill all the r2 sessions...
 	for proc in psutil.process_iter():
 		if proc.name() == 'r2':
 			proc.terminate()
@@ -530,12 +578,12 @@ def Api(r2, eapi=None, args=None):
 	for symbol in r2.cmdj('isj'):
 		for API in ApiEmu.susp_api:
 			if API in symbol['flagname']:
-				print "!", API
+				print "!" + API + " @ " + hex(symbol['vaddr'])
 
 def String(r2, eapi=None, args=None):
 	#Can't display mutiple finds.
 	for index in xrange(len(ApiEmu.susp_string)):
-		res = r2.cmdj('/j ' + ApiEmu.susp_string[index] )
+		res = r2.cmdj('/j ' + ApiEmu.susp_string[index])
 		
 		if res:
 			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
@@ -590,6 +638,47 @@ def Verbosity(r2, eapi=None, args=None):
 
 
 
+def RemoveBreakpoints(r2, eapi=None, args=None):
+	sketchy_functions    = [
+				'sub.KERNEL32.dll_GetSystemTimeAsFileTime_b8c',
+				'sub.KERNEL32.dll_SetUnhandledExceptionFilter_38c',
+			       ]
+	sketchy_instructions = [
+				'int 3',
+			       ]
+
+	for sf in sketchy_functions:
+		line = r2.cmdj("axtj " + sf)	
+		if line:	
+			for element in line:
+				nopslide = '0x'
+				print "Break point found @ " + hex(element['fcn_addr'])
+				instr = r2.cmdj('pdj 1 @' + hex(element['fcn_addr']))	
+				length = len(instr[0]['bytes'])
+				for index in xrange(length/2):
+					nopslide += '90'
+				r2.cmd("wx " + nopslide + " @ " + hex(element['fcn_addr']))
+				print "Removed."
+		else:
+			print "No function breakpoints found."
+
+	for si in sketchy_instructions:
+		line = r2.cmdj("/cj " + si)	
+		if line:	
+			for element in line:
+				nopslide = '0x'
+				print "Break point found @ " + hex(element['offset'])
+				instr = r2.cmdj('pdj 1 @' + hex(element['offset']))	
+				length = len(instr[0]['bytes'])
+				for index in xrange(length/2):
+					nopslide += '90'
+				r2.cmd("wx " + nopslide + " @ " + hex(element['offset']))
+				print "Removed."
+		else:
+			print "No Breakpoints found."
+	return
+
+
 def Help(r2=None, eapi=None, args=None):
 	HELP = """COMMANDS:
 	init   [aeb] - Initializes ESIL VM
@@ -610,8 +699,10 @@ def Help(r2=None, eapi=None, args=None):
 		       x = number of times to continue (default=infinity) 
 	step   [x]   - Analyzed Step
 	               x = number of times to step (default=1)
+	rmBreak      - Remove all breakpoints
 	stop         - Exit and kill r2
 	help         - Display this help"""
+
 	print HELP
 
 COMMANDS = {
@@ -627,6 +718,7 @@ COMMANDS = {
 	'pathfind': PathFind,
 	'loops'   : PrintLoops,
 	'v'	  : Verbosity,
+	'rmBreak' : RemoveBreakpoints,
 	'help'    : Help,
 }
 
@@ -635,6 +727,12 @@ COMMANDS = {
 #   The last thing each hook should do is single step
 ###################################################################################
 def HOOK_CALL(r2, insn, eapi):
+
+	#Auto adjusting the stack seems to break things more than help them :(
+	#print "Alledgedly " + str(eapi.pushes) + " push(es) has/have been made: Adjusting stack"
+	#r2.cmd('ar esp=esp+' + str(eapi.pushes*4))
+	eapi.pushes = 0
+
 	# don't care what kind of call.
 	expected_ret_val = hex(insn[0]['addr'] + insn[0]['size'])
 	eapi.ret_stk.append(expected_ret_val)
@@ -701,6 +799,19 @@ def HOOK_CPUID(r2, insn, eapi):
 		r2.cmd('aes')
 	return 1
 
+def HOOK_PUSH(r2, insn, eapi):
+	if eapi.pushes == 0:
+		eapi.pushes = 1
+		r2.cmd('s eip')
+		while True:
+			r2.cmd('so')
+			instr = r2.cmdj('pdj 1')[0]
+			if instr['type'] not in ['push', 'upush']:
+				if instr['type'] not in ['call', 'ucall']:
+					eapi.pushes = 0		
+				break
+			eapi.pushes += 1
+
 def HOOK_JMP(r2, insn, eapi):
 
 	if eapi.loop_detected:
@@ -744,42 +855,59 @@ def HOOK_JMP(r2, insn, eapi):
 	else:
 		eapi.jmp_stk['count'][insn[0]['addr']] = 1
 		eapi.jmp_stk['order'].append(insn[0]['addr'])
+
 	r2.cmd('aes')
 	return 0
+
 
 IHOOKS = {
 	'call' : HOOK_CALL,
 	'ret'  : HOOK_RET,
 	'cpuid': HOOK_CPUID,
 	'bt'   : HOOK_BT,
-#	'cdq'  : HOOK_CDQ,
+	'push' : HOOK_PUSH,
 	'jne'  : HOOK_JMP,
-	'jle'  : HOOK_JMP,
-	'jl'   : HOOK_JMP,
+	'je'   : HOOK_JMP,
 	'jge'  : HOOK_JMP,
 	'jg'   : HOOK_JMP,
-	'je'   : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
-#	'jne'  : HOOK_JMP,
+	'jle'  : HOOK_JMP,
+	'jl'   : HOOK_JMP,
+	'jae'  : HOOK_JMP,
+	'jl'   : HOOK_JMP,
+	'jle'  : HOOK_JMP,
+	'jb'   : HOOK_JMP,
+	'jbe'  : HOOK_JMP,
+	'jo'   : HOOK_JMP,
+	'jno'  : HOOK_JMP,
+	'jz'   : HOOK_JMP,
+	'jnz'  : HOOK_JMP,
+	'js'   : HOOK_JMP,
+	'jns'  : HOOK_JMP,
+
+
+	#'cdq'  : HOOK_CDQ,
 }
 
 #   MAIN
 ###################################################################################
 def main(argv):
-	subprocess.Popen(['r2', '-qc=h', argv[0]], stdout=FNULL, stderr=FNULL)
+	# There will be problems if the file is not writable!
+	subprocess.Popen(['r2', '-qc=h', '-w', argv[0]], stdout=FNULL, stderr=FNULL)
 	time.sleep(2)
 	
 	r2   = r2pipe.open('http://127.0.0.1:9090')
 	eapi = ApiEmu()
-	
 	print r2.cmd('?E Bruh')
 	print "Enter help for a list of commands."
 
 	while True:
 		addr = r2.cmd('s')
 		if addr:
-			command = raw_input('[' + addr + ']> ')
+			try:
+				command = raw_input('[' + addr + ']> ')
+			except EOFError:
+				print "End of file reached"
+				return
 		else:
 			subprocess.Popen(['pkill', 'r2', argv[0]], stdout=FNULL, stderr=FNULL)
 			r2   = r2pipe.open('http://127.0.0.1:9090')
