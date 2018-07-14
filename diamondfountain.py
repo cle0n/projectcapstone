@@ -19,7 +19,7 @@
 	- test out revolver-style task calling
 	- Figure out which instructions radare2 can't emulate and emulate them
 	  - cpuid, bt, cdq
-	
+	F
 	- SEH, fs:[0]. How the hell to detect exceptions? Can't without extensive analysis
 	- add breakpoints?
 '''
@@ -50,15 +50,15 @@ class ApiEmu:
 	ctf = False
 	pushes = 0
 	susp_reg_key = [
-		'SOFTWARE\VMware, Inc.\VMware Tools',
-		'HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\Scsi\Scsi Port 2\Scsi Bus 0\Target Id 0\Logical Unit Id 0\Identifier',
-		'SYSTEM\CurrentControlSet\Enum\SCSI\Disk&Ven_VMware_&Prod_VMware_Virtual_S',
-		'SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\\root#vmwvmcihostdev',
-		'SYSTEM\CurrentControlSet\Control\VirtualDeviceDrivers',
+		'SOFTWARE\\\VMware, Inc.\\\VMware Tools',
+		'HARDWARE\\\DEVICEMAP\\\Scsi\\\Scsi Port 2\\\Scsi Bus 0\\\Target Id 0\\\Logical Unit Id 0\\\Identifier',
+		'SYSTEM\\\CurrentControlSet\\\Enum\SCSI\\\Disk&Ven_VMware_&Prod_VMware_Virtual_S',
+		'SYSTEM\\\CurrentControlSet\\\Control\\\CriticalDeviceDatabase\\\\root#vmwvmcihostdev',
+		'SYSTEM\\\CurrentControlSet\\\Control\\\VirtualDeviceDrivers',
 	]
 	
 	susp_string = [
-		"http", "00:05:69", #"v", This is probably a ctrl-v typo
+		"http", "00:05:69",
 		"00:0C:29", "00:1C:14", 
 		"00:50:56", "08:00:27", 
 		"Vmtoolsd", "Vmwaretrat", "VMTools",
@@ -79,12 +79,34 @@ class ApiEmu:
 
 	susp_api = [
 		'ShellExecuteA', 'ShellExecuteW',
-		'AdjustTokenPriveleges',
+		'AdjustTokenPrivileges',
 		'CheckRemoteDebuggerPresent',
 		'OleGetClipboard',
 		'GetCommandLineA', 'GetCommandLineW',
 		'TlsGetValue',
 		'IsDebuggerPresent', 'CheckRemoteDebuggerPresent',
+		'RegOpenKeyExW', 'RegCloseKey',
+		'GetAdaptersAddresses', 'GetProcessHeap',
+		'GetProcAddress', 'LoadLibraryA',
+		'EnumServiceStatusW', 'OpenSCManagerW',
+		'SetUnhandledExceptionFilter',
+		'DbgUIConnectToDbg',
+		'QueryInformationProcess',
+		'OutputDebugString',
+		'EventPairHandles',
+		'CsrGetProcessID',
+		'FindProcess',
+		'FindWindow',
+		'NtQueryObject',
+		'NtQuerySysteminformation',
+		'NtContinue',
+		'NtClose',
+		'GenerateConsoleCtrlEvent',
+		'GetLocalTime',
+		'GetSystemTime',
+		'NtQueryPerformanceCounter',
+		
+		
 	]
 	
 	def __init__(self):
@@ -130,7 +152,7 @@ class ApiEmu:
 			'GlobalUnfix'                	: self._GlobalUnfix,
 			'IsDebuggerPresent'	     	: self._IsDebuggerPresent,
 			'CheckRemoteDebuggerPresent' 	: self._CheckRemoteDebuggerPresent,
-# START HERE		'SetUnhandledExceptionFilter'	: self._SetUnhandledExceptionFilter,
+#			'SetUnhandledExceptionFilter'	: self._SetUnhandledExceptionFilter,
 #			'DbgUIConnectToDbg'		: self._DbgUIConnectToDbg,
 #			'QueryInformationProcess'	: self._QueryInformationProcess,
 #			'OutputDebugString'		: self._OutputDebugString,
@@ -266,6 +288,7 @@ class ApiEmu:
 		API = r2.cmd('ps @ [esp+4]')
 		print "  > ARG: '" + API + "'"
 		r2.cmd('ar esp=esp+8')
+		#r2.cmd('ar eax=0')
 
 		# get rid of the try-catch
 		for sym in SYMBOLS:
@@ -530,6 +553,8 @@ def Continue(r2, eapi, args=None):
 					r2.cmd('aes; s eip')
 					if not eapi.ctf:
 						return
+					else:
+						break
 
 			r2.cmd('aes')
 			stepcount -= 1
@@ -547,7 +572,7 @@ def ContinueTilFail(r2, eapi=None, args=None):
 		eapi.ctf = False
 	else:
 		while eapi.ctf:
-			Continue(r2, eapi, args)
+			Continue(r2, eapi, 1)
 	return 0
 
 def Step(r2, eapi=None, args=None):
@@ -581,22 +606,38 @@ def Api(r2, eapi=None, args=None):
 				print "!" + API + " @ " + hex(symbol['vaddr'])
 
 def String(r2, eapi=None, args=None):
-	#Can't display mutiple finds.
-	for index in xrange(len(ApiEmu.susp_string)):
-		res = r2.cmdj('/j ' + ApiEmu.susp_string[index])
-		
-		if res:
-			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
-		else:
-			print "! NOT FOUND ", ApiEmu.susp_string[index]
 
-	for index in xrange(len(ApiEmu.susp_string)):
-		b64 = base64.b64encode(ApiEmu.susp_string[index])
-		res = r2.cmdj('/j ' + b64)
-		if res:
-			print "! Base64 FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+	#izzj automatically encodes strings into base64, because radare2 hates its users
+	for string in r2.cmdj('izzj')['strings']:
+		#print string
+		if not args:
+			for susp_string in ApiEmu.susp_string + ApiEmu.susp_reg_key:
+				#print "Checking against " + base64.b64decode(string['string'])
+				if susp_string in base64.b64decode(string['string']):
+					print "! FOUND ", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+				if base64.b64encode(susp_string) == base64.b64decode(string['string']):
+					print "! Base64 ENCODING FOUND ", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
 		else:
-			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
+			if args in base64.b64decode(string['string']):
+				print "! FOUND ", args, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+			if base64.b64encode(args) == base64.b64decode(string['string']):
+				print "! Base64 ENCODING FOUND ", args, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+
+	#Can't display mutiple finds.
+#	for index in xrange(len(ApiEmu.susp_string)):
+#		res = r2.cmdj('/j ' + ApiEmu.susp_string[index])
+#		if res:
+#			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+#		else:
+#			print "! NOT FOUND ", ApiEmu.susp_string[index]
+#
+#	for index in xrange(len(ApiEmu.susp_string)):
+#		b64 = base64.b64encode(ApiEmu.susp_string[index])
+#		res = r2.cmdj('/j ' + b64)
+#		if res:
+#			print "! Base64 FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
+#		else:
+#			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
 
 def RemoveBreakpoints(r2, eapi=None, args=None):
     sketchy_functions = [
@@ -725,8 +766,8 @@ def Help(r2=None, eapi=None, args=None):
 	v      [+-]  - Changes verbosity levels using v + or v - to increase or decrease
 		       Use v ++ for max verbosity or v -- for minimum verbosity
 	x      [cmd] - Executes a python command
-	string [x]   - Searches malware for suspicious looking strings
-	               x = filename/path in double-quotes
+	string [x]   - Searches malware for a set of suspicious looking strings
+	               x = specific string to search (default is the list of suspicious strings and registry strings)
 	rmBreak	     - Removes breakpoints set by malware author. 
 	cont   [x]   - Continue Emulation
 	               x = number of times to continue (default=1)
@@ -771,7 +812,8 @@ def HOOK_CALL(r2, insn, eapi):
 
 	# don't care what kind of call.
 	expected_ret_val = hex(insn[0]['addr'] + insn[0]['size'])
-	eapi.ret_stk.append(expected_ret_val)
+	expected_esp_val = r2.cmd('ar esp')
+	eapi.ret_stk.append([expected_ret_val, expected_esp_val])
 	if eapi.verbosity > 1:
 		print "! EXPECTED RETURN: " + expected_ret_val
 	r2.cmd('s eip')
@@ -785,7 +827,9 @@ def HOOK_RET(r2, insn, eapi):
 	if eapi.verbosity > 1:
 		print "! RET " + ret_val
 	if eapi.ret_stk:
-		expected_ret_val = eapi.ret_stk.pop()
+		expected = eapi.ret_stk.pop()
+		expected_ret_val = expected[0]
+		expected_esp_val = expected[1]
 		if expected_ret_val != ret_val:
 			print "! UNEXPECTED RETURN (LIKELY STACK MANIPULATION)"
 			print "  > EXPECTED: " + expected_ret_val
@@ -797,7 +841,9 @@ def HOOK_RET(r2, insn, eapi):
 			if proceed.lower() == 'y':
 				print("Proceeding to expected return")
 				r2.cmd('s ' + expected_ret_val)
+				r2.cmd('ar esp=' + expected_esp_val)
 				r2.cmd('aeip')
+				print "eip = " + r2.cmd('ar eip') + " seek_addr = " + r2.cmd('s')
 				return 1
 		else:
 			if eapi.verbosity > 1:

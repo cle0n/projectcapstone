@@ -154,7 +154,7 @@ class Voyager:
 		#	print "Duplicate path!"
 		#	print "Something is fucky"
 		#	return
-		self.pathlist.append(path)
+		#self.pathlist.append(path)
 		
 		
 
