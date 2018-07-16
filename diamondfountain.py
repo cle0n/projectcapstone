@@ -623,55 +623,6 @@ def String(r2, eapi=None, args=None):
 			if base64.b64encode(args) == base64.b64decode(string['string']):
 				print "! Base64 ENCODING FOUND ", args, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
 
-	#Can't display mutiple finds.
-#	for index in xrange(len(ApiEmu.susp_string)):
-#		res = r2.cmdj('/j ' + ApiEmu.susp_string[index])
-#		if res:
-#			print "! FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
-#		else:
-#			print "! NOT FOUND ", ApiEmu.susp_string[index]
-#
-#	for index in xrange(len(ApiEmu.susp_string)):
-#		b64 = base64.b64encode(ApiEmu.susp_string[index])
-#		res = r2.cmdj('/j ' + b64)
-#		if res:
-#			print "! Base64 FOUND ", ApiEmu.susp_string[index], "at", hex(res[0]['offset']) + ": " + res[0]['data']
-#		else:
-#			print "! Base64 NOT FOUND ", ApiEmu.susp_string[index]
-
-def RemoveBreakpoints(r2, eapi=None, args=None):
-    sketchy_functions = [
-                'sub.KERNEL32.dll_GetSystemTimeAsFileTime_b8c',
-                'sub.KERNEL32.dll_SetUnhandledExceptionFilter_38c',
-                ]
-
-
-    for sf in sketchy_functions:
-
-        line = r2.cmdj("axtj " + sf)    
-
-        if line:    
-
-            for element in line:
-
-                nopslide = '0x'
-
-                print "Break point found @ " + hex(element['fcn_addr'])
-                instr = r2.cmdj('pdj 1 @' + hex(element['fcn_addr']))    
-                length = len(instr[0]['bytes'])
-                for index in xrange(length/2):
-                    nopslide += '90'
-
-                r2.cmd("wx " + nopslide + " @ " + hex(element['fcn_addr']))
-
-                print "Removed."
-
-        else:
-
-            print "No Breakpoints found."
-
-    return
-
 
 def PathFind(r2=None, eapi=None, args=None):
 	paths = r2.cmdj('afbj')
