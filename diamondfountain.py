@@ -320,7 +320,7 @@ def RemoveBreakpoints(emuinfo, args=None):
 		'sub.KERNEL32.dll_SetUnhandledExceptionFilter_38c',
 	]
 	sketchy_instructions = [
-		'int 3',
+		'int3',
 	]
 
 	for sf in sketchy_functions:
