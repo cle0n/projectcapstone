@@ -1,0 +1,41 @@
+radiff2
+rax2
+rafind2
+
+comparing bytes
+configuration variables
+scripting loops?
+definetly binary diffing
+types
+https://radare.gitbooks.io/radare2book/content/plugins/plugins.html
+
+EMULATION:
+###################################################################################
+http://blog.switchport.io/reversing/2017/04/27/radare2-emulation.html
+https://rada.re/get/lacon2k15-esil.pdf
+https://blog.xpnsec.com/radare2-using-emulation-to-unpack-metasploit-encoders/
+http://blog.superponible.com/2017/04/15/emulating-assembly-in-radare2/
+https://blog.xorhex.com/tiny-r2-emulation/
+ 
+NOTES:
+###################################################################################
+
+iz - search for strings (doesn't find them in .text section!)
+
+/i  - search case-insensitive ascii
+/w  - search case-sensitive wide character
+/wi - search case-insensitive wide character
+
+Successfuly search results produce hit markers:
+ps @ hit0_0
+psw @@ hit*
+
+Remove all hits:
+f- hit*
+
+
+Anti-VMWare Registry detection Method example (unobfuscated, __cdecl):
+1. "ii" to pull up imports. Look for RegOpenKeyEx
+2. "/i vmware" or "/wi vmware" to find suspicious strings and record offsets
+3. "/r offset" to find reference of string and API
+4. Seek to either or and determine if they are related.
