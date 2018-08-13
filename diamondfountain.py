@@ -221,7 +221,7 @@ def Step(emuinfo, args=None):
 	Continue(emuinfo, count)
 
 def Stop(emuinfo, args=None):
-	emuinfo.r2.cmd('-ar* ; ar0 ; aeim- ; aei-;')
+	#emuinfo.r2.cmd('-ar* ; ar0 ; aeim- ; aei-;')
 	emuinfo.r2.quit()
 
 	FNULL.close()
@@ -247,14 +247,14 @@ def String(emuinfo, args=None):
 			for susp_string in emuinfo.susp_string + emuinfo.susp_reg_key:
 				#print "Checking against " + base64.b64decode(string['string'])
 				if susp_string in base64.b64decode(string['string']):
-					print "! FOUND ", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+					print "! FOUND", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
 				if base64.b64encode(susp_string) == base64.b64decode(string['string']):
-					print "! Base64 ENCODING FOUND ", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
-				else:
-					if args in base64.b64decode(string['string']):
-						print "! FOUND ", args, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
-					if base64.b64encode(args) == base64.b64decode(string['string']):
-						print "! Base64 ENCODING FOUND ", args, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+					print "! Base64 ENCODING FOUND", susp_string, "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+		else:
+			if args[0] in base64.b64decode(string['string']):
+				print "! FOUND", args[0], "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
+			if base64.b64encode(args[0]) == base64.b64decode(string['string']):
+				print "! Base64 ENCODING FOUND", args[0], "at", hex(string['vaddr']) + ": " + base64.b64decode(string['string'])
 
 '''
 def String(emuinfo, args=None):
@@ -353,49 +353,63 @@ def RemoveBreakpoints(emuinfo, args=None):
 		else:
 			print "No Breakpoints found."
 	return
+def LoopFind(emuinfo=None, args=None):
+	if emuinfo:
+		if args:
+			if args[0] == "+":
+				emuinfo.loop_detector_enabled = True
+			if args[0] == "-":
+				emuinfo.loop_detector_enabled = False
+		else:
+			print "Loop detector enabled: " + str(emuinfo.loop_detector_enabled)
+	else:
+		print "Not initialized" 
 
 def Help(emuinfo=None, args=None):
 	HELP = """COMMANDS:
-	init [aebr]  - Initializes ESIL VM
-	               a = analyze, e = emulation, b = symbols (separate with spaces), r = reset emuinfo variables
-	symb         - Builds list of imports links known ones to our emulated API's
-	loadmod      - Builds mock TIB/PEB and loads kernel32.dll export info 
-	api          - Get a list of Suspicious APIs in the malware
-	pathfind     - Examines a function and maps out all possible paths
-	loops        - Examines a function and prints out possible loops
-	v [+-]       - Changes verbosity levels using v + or v - to increase or decrease
-	               Use v ++ for max verbosity or v -- for minimum verbosity
-	x [cmd]      - Executes a python command
-	string [x]   - Searches malware for suspicious looking strings
-	               x = specific string to search (see emuinfo for default strings)
-	cont [x]     - Continue Emulation
-	               x = number of times to continue (default=1)
-	ctf [x]      - Continue 'Til Fail, continues and automatically skips loops and takes expected returns
-		           x = number of times to continue (default=infinity) 
-	step [x]     - Analyzed Step
-	               x = number of times to step (default=1)
-	rmBreak      - Remove breakpoints set by malware author
-	stop         - Exit and kill r2
-	help         - Display this help"""
+	init [aebr]   - Initializes ESIL VM
+	                a = analyze, e = emulation, b = symbols (separate with spaces), r = reset emuinfo variables
+	symb          - Builds list of imports links known ones to our emulated API's
+	loadmod       - Builds mock TIB/PEB and loads kernel32.dll export info 
+	api           - Get a list of Suspicious APIs in the malware
+	pathfind      - Examines a function and maps out all possible paths
+	loops         - Examines a function and prints out possible loops
+	v [+-]        - Changes verbosity levels using v + or v - to increase or decrease
+	                Use v ++ for max verbosity or v -- for minimum verbosity
+	x [cmd]       - Executes a python command
+	string [x]    - Searches malware for suspicious looking strings
+	                x = specific string to search (see emuinfo for default strings)
+	cont [x]      - Continue Emulation
+	                x = number of times to continue (default=1)
+	ctf [x]       - Continue 'Til Fail, continues and automatically skips loops and takes expected returns
+		        x = number of times to continue (default=infinity) 
+	step [x]      - Analyzed Step
+	                x = number of times to step (default=1)
+	rmBreak       - Remove breakpoints set by malware author
+	loopfind [+-] - Turn the loopfinder on or off
+			loopfind + to turn the loopfinder on, and loopfinder - to turn it off
+	stop          - Exit and kill r2
+	help          - Display this help"""
 	print HELP
 
 COMMANDS = {
-	'init'    : InitEmu,
-	'symb'    : BuildSymbols,
-	'loadmod' : BuildInMemoryModules,
-	'api'     : Api,
-	'string'  : String,
-	'cont'    : Continue,
-	'ctf'	  : ContinueTilFail,
-	'step'    : Step,
-	'stop'    : Stop,
-	'q'       : Stop,
-	'quit'    : Stop,
-	'pathfind': PathFind,
-	'loops'   : PrintLoops,
-	'v'       : Verbosity,
-	'rmBreak' : RemoveBreakpoints,
-	'help'    : Help,
+	'init'     : InitEmu,
+	'symb'     : BuildSymbols,
+	'loadmod'  : BuildInMemoryModules,
+	'api'      : Api,
+	'string'   : String,
+	'cont'     : Continue,
+	'ctf'	   : ContinueTilFail,
+	'step'     : Step,
+	'stop'     : Stop,
+	'q'        : Stop,
+	'quit'     : Stop,
+	'pathfind' : PathFind,
+	'loops'    : PrintLoops,
+	'v'        : Verbosity,
+	'rmBreak'  : RemoveBreakpoints,
+	'loopfind' : LoopFind,
+	'help'     : Help,
 }
 
 #   MAIN

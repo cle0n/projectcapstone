@@ -127,7 +127,7 @@ class InsnHooks:
 		return 0
 
 	def HOOK_JMP(self, emuinfo, insn):
-		if emuinfo.loop_detected:
+		if emuinfo.loop_detected and emuinfo.loop_detector_enabled:
 			if insn[0]['addr'] == emuinfo.loop_detected:
 				if emuinfo.ctf:
 					skip = 'y'

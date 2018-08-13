@@ -82,7 +82,7 @@ class EmuInfo(InsnHooks, ApiHooks):
 			'count': {},
 			'order': [],
 		}
-
+		self.loop_detector_enabled = True
 		self.loop_detected = False
 		self.pushes = 0
 
