@@ -1,5 +1,5 @@
 #include <signal.h>
-
+#include <stdio.h>
 
 int main(int argc, char** argv)
 {
@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     __asm__("int3");
     a++;  
     raise(SIGINT);
-	printf("vboxoglfeedbackspu.dll")
+	printf("vboxoglfeedbackspu.dll");
     return 0;
 
 
