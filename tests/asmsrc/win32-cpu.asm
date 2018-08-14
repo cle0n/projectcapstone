@@ -56,12 +56,13 @@ _start:
 		; if running inside a VM. Otherwise it will fail.
 		;mov 	eax, 0x564D5868 ; VMXh
 		;mov 	edx, 0x5658
-		;in  	eax, dx			; if not in VMware, program crashes. Then whats the point?
+		;in  	eax, dx			; if not in VMware, program generates an exception. 
 		
 		;cmp 	ebx, 0x564D5868
 		;setz	cl
 		
-		; MMX: an Intel instruction set, designed for faster processing of graphical applications. These are usually not supported in Virtual Machines so their absence may indicate that the malware is running in a VM.
+		; MMX: an Intel instruction set, designed for faster processing of graphical applications.
+		; These are usually not supported in Virtual Machines so their absence may indicate that the malware is running in a VM.
 		
 		
 		jmp 	exit
