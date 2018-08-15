@@ -1,4 +1,4 @@
-# projectcapstone
+# Diamond Fountain
 Installation Instructions
 ```
 git clone https://github.com/radare/radare2
